@@ -23,6 +23,9 @@
   .ic { width: 1.15em; height: 1.15em; vertical-align: -.18em; flex: none;
         fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .big .ic, .small .ic { margin-inline-end: .45em; }
+  /* סמל נגן/השהה בתוך העיגול: מלא, לבן, בלי תלות באמוג'י של מערכת ההפעלה */
+  .ic-pc { width: .92em; height: .92em; fill: #fff; stroke: none; }
+  #pc-icon { display: flex; align-items: center; justify-content: center; }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; }
   body {
@@ -182,6 +185,8 @@
 <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.6-7-9.4A4.1 4.1 0 0 1 12 7.6 4.1 4.1 0 0 1 19 10.6C19 15.4 12 20 12 20z"/></symbol>
 <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.5 2.5 5 13.5h5.5L10 21.5 19 10.5h-5.7z"/></symbol>
 <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="M8.2 5.4v13.2a1 1 0 0 0 1.53.85l10.4-6.6a1 1 0 0 0 0-1.7L9.73 4.55a1 1 0 0 0-1.53.85z"/></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24"><rect x="6.2" y="5" width="4.2" height="14" rx="1.4"/><rect x="13.6" y="5" width="4.2" height="14" rx="1.4"/></symbol>
 </defs></svg>
 <svg style="display:none" aria-hidden="true"><defs>
 <g id="i-cam"><path d="M3 8a2 2 0 0 1 2-2h2l1.2-2h7.6L17 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><circle cx="12" cy="12.5" r="3.5"/></g>
@@ -334,7 +339,7 @@
       <circle class="pc-track" cx="60" cy="60" r="54"></circle>
       <circle class="pc-fill" id="pc-fill" cx="60" cy="60" r="54"></circle>
     </svg>
-    <span id="pc-icon">▶</span>
+    <span id="pc-icon"><svg class="ic-pc" viewBox="0 0 24 24" aria-hidden="true"><use id="pc-use" href="#i-play"/></svg></span>
   </button>
   <div class="bars paused" id="eq" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
   <div class="note">האזינו ונחשו: מתי השיר יצא? מקמו את הקלף בציר הזמן שלכם ורק אז חשפו</div>
@@ -533,12 +538,17 @@ const App = (() => {
     const tok = s => new Set((s || '').toLowerCase().replace(/[^\w\s֐-׿']/g, ' ').split(/\s+/).filter(Boolean));
     const overlap = (a, b) => { if (!a.size) return 0; let n = 0; a.forEach(x => b.has(x) && n++); return n / a.size; };
 
-    async function findTrack(a, t) {
+    async function findTrack(a, t, alt) {
       const key = 'sp_track::' + a + '::' + t;
       const cached = localStorage.getItem(key);
       if (cached) return JSON.parse(cached);
-      for (const q of [`track:"${t}" artist:"${a}"`, `${a} ${t}`, t]) {
-        const d = await api('GET', '/search?' + new URLSearchParams({ q, type: 'track', limit: '10' }));
+      // כל השאילתות יוצאות בבת אחת והתוצאות נבחנות לפי סדר הדיוק,
+      // כי לאמן עברי השאילתה המדויקת נכשלת לרוב והמתנה טורית עולה שניות.
+      const qs = [`track:"${t}" artist:"${a}"`, `${a} ${t}`, alt ? `${alt} ${t}` : null, t].filter(Boolean);
+      const reqs = qs.map(q => api('GET', '/search?' + new URLSearchParams({ q, type: 'track', limit: '10' })).catch(() => null));
+      for (const r of reqs) {
+        const d = await r;
+        if (!d) continue;
         for (const it of (d.tracks && d.tracks.items) || []) {
           const tOK = overlap(tok(t), tok(it.name)) >= 0.7;
           const artistNames = it.artists.map(x => x.name).join(' ');
@@ -554,10 +564,15 @@ const App = (() => {
       return null;
     }
 
-    // מכשירים מוגבלים (למשל אפליקציית האייפון במצבים מסוימים) דוחים פקודות, ולכן מסוננים
-    async function devices() {
+    // מכשירים מוגבלים (למשל אפליקציית האייפון במצבים מסוימים) דוחים פקודות, ולכן מסוננים.
+    // מטמון קצר: המכשיר לא מתחלף בין קלף לקלף, ואין טעם לשאול את ספוטיפיי בכל סיבוב.
+    let devCache = { t: 0, list: null };
+    async function devices(fresh) {
+      if (!fresh && devCache.list && Date.now() - devCache.t < 45000) return devCache.list;
       const d = await api('GET', '/me/player/devices');
-      return ((d && d.devices) || []).filter(x => !x.is_restricted);
+      const list = ((d && d.devices) || []).filter(x => !x.is_restricted);
+      devCache = { t: Date.now(), list };
+      return list;
     }
     // סדר עדיפות: הבחירה של המשתמש, מכשיר פעיל, רמקול או מחשב (יציבים), ורק אז הטלפון
     function pickDevice(list) {
@@ -575,11 +590,17 @@ const App = (() => {
 
     // נגינה מתחילת הרצועה בדיוק: position_ms אפס, ורצועה בודדת בהקשר
     // כדי שספוטיפיי לא ימשיך אוטומטית לשיר הבא ויסגיר שנה אחרת.
+    let tuned = null;      // מכשיר שכבר כובה בו הרצף והערבוב; אין צורך לחזור על זה בכל שיר
     async function play(uri, positionMs = 0, preferDevice = null) {
       const dev = preferDevice || await device();
       if (!dev) { const e = new Error('nodevice'); e.nodevice = true; throw e; }
-      await api('PUT', '/me/player/repeat?state=off&device_id=' + dev, null).catch(() => {});
-      await api('PUT', '/me/player/shuffle?state=false&device_id=' + dev, null).catch(() => {});
+      if (tuned !== dev) {
+        await Promise.all([
+          api('PUT', '/me/player/repeat?state=off&device_id=' + dev, null).catch(() => {}),
+          api('PUT', '/me/player/shuffle?state=false&device_id=' + dev, null).catch(() => {}),
+        ]);
+        tuned = dev;
+      }
       await api('PUT', '/me/player/play?device_id=' + dev, { uris: [uri], position_ms: positionMs });
     }
     const pause = () => api('PUT', '/me/player/pause', null).catch(() => {});
@@ -871,16 +892,22 @@ const App = (() => {
     if (full) {
       // מקימים את הנגן המובנה ברקע כבר עכשיו, כדי שיהיה מוכן כשנצטרך אותו
       if (sp.hasScope('streaming') && !sdk.id() && !sdk.error()) sdk.load().catch(() => {});
-      let found = null;
-      try { found = await sp.findTrack(s.a, s.t); } catch (e) { found = null; }
+      // חיפוש השיר והכנת המכשיר במקביל: אלה שתי שיחות רשת בלתי תלויות,
+      // וההמתנה הטורית ביניהן הייתה עיקר האיטיות בתחילת סיבוב.
+      const [found] = await Promise.all([
+        sp.findTrack(s.a, s.t, s.alt).catch(() => null),
+        armDevice().catch(() => null),
+      ]);
       if (current !== me) return;     // המשתמש כבר עבר לקלף אחר
       current.sp = found;
       if (!current.sp) {
+        showWake(false);              // עוברים לקטע קצר, פאנל ההעֵרה כבר לא רלוונטי
         $('play-status').textContent = 'לא נמצא בספוטיפיי, נשתמש בקטע של 30 שניות';
-        return preparePreview();
+        await preparePreview();
+        if (current === me) preparing = false;   // בלי זה הכפתור נשאר נעול על "השיר נטען"
+        return;
       }
       current.spStarted = false;
-      await armDevice();      // בוחר רמקול, מחשב או טלפון; בלי אף אחד, פאנל העֵרה
       if (current === me) preparing = false;
       return;
     }
@@ -923,9 +950,9 @@ const App = (() => {
   // ארבעה מצבים בלבד. אף מקום אחר בקוד לא כותב את סמל הכפתור, ולכן שיחה נכנסת
   // או נעילת מסך לא יכולות להשאיר סמל השהיה מעל שקט.
   function setPlayState(state, msg) {
-    const btn = $('play-btn'), icon = $('pc-icon'), eq = $('eq');
+    const btn = $('play-btn'), eq = $('eq');
     btn.classList.toggle('loading', state === 'loading');
-    icon.textContent = state === 'playing' ? '⏸' : '▶';
+    $('pc-use').setAttribute('href', state === 'playing' ? '#i-pause' : '#i-play');
     btn.setAttribute('aria-label', state === 'playing' ? 'השהה' : 'נגן');
     eq.classList.toggle('paused', state !== 'playing');
     if (state !== 'playing') setProgress(0);
@@ -1008,10 +1035,10 @@ const App = (() => {
   const withTimeout = (p, ms) =>
     Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
 
-  async function armDevice() {
+  async function armDevice(fresh) {
     const me = current;
     let list = [];
-    try { list = await sp.devices(); } catch (e) {}
+    try { list = await sp.devices(fresh); } catch (e) {}
     if (current !== me) return null;
     let dev = sp.pickDevice(list);
     // אין מכשיר חיצוני: מנסים את הנגן המובנה של הדף, עם תקרת המתנה קצרה
@@ -1026,7 +1053,7 @@ const App = (() => {
     current.dev = dev ? dev.id : null;
     showWake(!dev);
     $('play-status').textContent = dev
-      ? `רצועה מלאה מוכנה <svg class="ic"><use href="#i-head"/></svg>${dev.name ? '(' + dev.name + ')' : ''}`
+      ? `רצועה מלאה מוכנה${dev.name ? ' (' + dev.name + ')' : ''}`
       : 'ספוטיפיי ישן, העירו אותו פעם אחת';
     return current.dev;
   }
@@ -1041,7 +1068,7 @@ const App = (() => {
     // המכשיר נעלם: רשימה טרייה וניסיון אחד נוסף. אם אין כלום, פאנל העֵרה ולא שגיאה.
     $('play-status').textContent = 'מחפש מכשיר...';
     current.dev = null;
-    const id = await armDevice();
+    const id = await armDevice(true);      // המכשיר בדיוק נעלם, המטמון משקר
     if (!id) { const e = new Error('wake'); e.wake = true; throw e; }
     await sp.play(uri, 0, id);
   }
@@ -1050,7 +1077,7 @@ const App = (() => {
   async function retryDevices() {
     const t0 = Date.now();
     while (Date.now() - t0 < 8000) {
-      if (await armDevice()) { sp.pause(); return; }
+      if (await armDevice(true)) { sp.pause(); return; }
       await new Promise(r => setTimeout(r, 1000));
     }
   }
@@ -1061,7 +1088,7 @@ const App = (() => {
     if (!sp.connected()) { box.textContent = ''; $('dev-wake').style.display = 'none'; return; }
     box.textContent = 'טוען...';
     let list = [];
-    try { list = await sp.devices(); } catch (e) { box.textContent = 'שגיאה בטעינת המכשירים'; return; }
+    try { list = await sp.devices(true); } catch (e) { box.textContent = 'שגיאה בטעינת המכשירים'; return; }
     box.innerHTML = '';
     $('dev-wake').style.display = list.length ? 'none' : '';
     if (!list.length) { box.textContent = 'לא נמצאו מכשירים. העירו את ספוטיפיי ולחצו רענן.'; return; }
@@ -1070,7 +1097,7 @@ const App = (() => {
       const b = document.createElement('button');
       b.className = 'small' + ((chosen === d.id || (!chosen && d.is_active)) ? ' on' : '');
       b.style.width = '100%';
-      b.textContent = `${d.name} (${d.type})` + (d.is_active ? ' <svg class="ic"><use href="#i-note"/></svg>' : '');
+      b.textContent = `${d.name} (${d.type})` + (d.is_active ? ' ✓ פעיל' : '');
       b.onclick = () => { localStorage.setItem('sp_device', d.id); refreshDevices(); };
       box.appendChild(b);
     }
@@ -1212,7 +1239,10 @@ const App = (() => {
       row.style.cssText = 'display:flex;gap:8px;align-items:center';
       const b = document.createElement('button');
       b.className = 'small'; b.style.flex = '1';
-      b.textContent = (i === turnIdx % players.length ? '<svg class="ic"><use href="#i-mic"/></svg>' : '') + p;
+      // אייקון דרך innerHTML, אבל שם השחקן כצומת טקסט כי הוא קלט חופשי
+      if (i === turnIdx % players.length)
+        b.innerHTML = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-mic"/></svg>';
+      b.appendChild(document.createTextNode(p));
       const x = document.createElement('button');
       x.className = 'small'; x.textContent = '✕';
       x.onclick = () => removePlayer(p);
@@ -1223,7 +1253,11 @@ const App = (() => {
   function renderTurn() {
     const n = turnName();
     $('turn-badge').style.display = n ? '' : 'none';
-    if (n) $('turn-badge').textContent = `<svg class="ic"><use href="#i-mic"/></svg>התור של ${n}`;
+    if (n) {
+      const el = $('turn-badge');
+      el.innerHTML = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-mic"/></svg>';
+      el.appendChild(document.createTextNode('התור של ' + n));
+    }
   }
   // שיפוט אחרי חשיפה: רושם, מקדם תור, ונועל את שני הכפתורים עד הקלף הבא
   function judge(hit) {

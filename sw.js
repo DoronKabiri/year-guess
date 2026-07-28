@@ -1,5 +1,5 @@
 // היטסטר רמיקס: מטמון מעטפת האפליקציה כדי שתעבוד גם בחיבור חלש
-const CACHE = 'remix-202607280644';
+const CACHE = 'remix-202607282057';
 const SHELL = [
   './',
   './index.html',
@@ -29,10 +29,24 @@ self.addEventListener('fetch', e => {
   // אודיו ו-API חיים: תמיד מהרשת, בלי מטמון
   if (url.hostname.endsWith('itunes.apple.com') || url.hostname.endsWith('spotify.com') ||
       url.hostname.endsWith('mzstatic.com') || url.pathname.endsWith('.m4a')) return;
-  // דף האפליקציה והנתונים: קודם מהרשת כדי שעדכון ייראה מיד, ומטמון רק כגיבוי
+  // קבצי נתונים גדולים (מאגר השירים): מהמטמון מיד, ורענון ברקע. עדכוני תוכן
+  // מגיעים ממילא עם חותמת מטמון חדשה בכל פריסה, ואין סיבה לחכות לרשת בכל פתיחה.
+  if (url.origin === location.origin && url.pathname.endsWith('.json')) {
+    e.respondWith((async () => {
+      const hit = await caches.match(e.request, { ignoreSearch: true });
+      const net = fetch(e.request).then(res => {
+        if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
+        return res;
+      }).catch(() => null);
+      if (hit) { e.waitUntil(net); return hit; }
+      return (await net) || caches.match('./');
+    })());
+    return;
+  }
+  // דף האפליקציה: קודם מהרשת כדי שעדכון ייראה מיד, ומטמון רק כגיבוי
   const fresh = url.origin === location.origin &&
     (e.request.mode === 'navigate' || url.pathname.endsWith('.html') ||
-     url.pathname.endsWith('.json') || url.pathname.endsWith('sw.js'));
+     url.pathname.endsWith('sw.js'));
   if (fresh) {
     e.respondWith((async () => {
       try {
