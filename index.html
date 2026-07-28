@@ -1,0 +1,1517 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#12081f">
+<title>היטסטר רמיקס</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="רמיקס">
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<style>
+  :root {
+    /* מערכת צבע אחת: ורוד הוא הפעולה, זהב הוא התשובה ורק במסך החשיפה,
+       ירוק שמור לספוטיפיי, וכל השאר סגול כהה ושקט. */
+    --bg1: #12081f; --bg2: #2a0f45; --accent: #ff3d81; --accent2: #ffb703;
+    --good: #1db954; --text: #f6f2ff; --muted: #b9a8d8;
+    --surface: rgba(255,255,255,.09); --surface-2: rgba(255,255,255,.16);
+  }
+  /* אייקונים אחידים: קו אחד, אותו עובי, בלי תלות במערכת ההפעלה */
+  .ic { width: 1.15em; height: 1.15em; vertical-align: -.18em; flex: none;
+        fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .big .ic, .small .ic { margin-inline-end: .45em; }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, "Heebo", sans-serif;
+    background: radial-gradient(120% 100% at 50% 0%, var(--bg2), var(--bg1) 70%);
+    color: var(--text); overflow: hidden; position: fixed; inset: 0; width: 100%;
+  }
+  .screen { position: absolute; inset: 0; display: none; flex-direction: column;
+    align-items: center; justify-content: center; padding: 24px; text-align: center; gap: 16px;
+    overflow-y: auto; }
+  .screen.active { display: flex; }
+  h1 { font-size: 2rem; letter-spacing: 1px; }
+  h1 .rmx { color: var(--accent); }
+  h2 { font-size: 1.3rem; }
+  .tag { color: var(--muted); font-size: .95rem; }
+  button { border: 0; border-radius: 18px; cursor: pointer; font-family: inherit; }
+  .big {
+    width: min(320px, 82vw); padding: 19px 10px; font-size: 1.3rem; font-weight: 700;
+    color: #fff; background: linear-gradient(135deg, var(--accent), #b5179e);
+    box-shadow: 0 8px 30px rgba(255, 61, 129, .35);
+  }
+  .big.alt { background: linear-gradient(135deg, #3a0ca3, #4361ee); box-shadow: 0 8px 30px rgba(67,97,238,.35); }
+  .big.green { background: linear-gradient(135deg, #1db954, #128a3e); box-shadow: 0 8px 30px rgba(29,185,84,.35); }
+  .small { background: var(--surface); color: var(--text); padding: 12px 20px; font-size: 1rem;
+    display: inline-flex; align-items: center; justify-content: center; }
+  .small:active { background: var(--surface-2); }
+  .big { display: inline-flex; align-items: center; justify-content: center; }
+  button:focus-visible, a:focus-visible { outline: 3px solid var(--accent2); outline-offset: 3px; }
+  #video-wrap { position: relative; width: min(340px, 88vw); aspect-ratio: 1; border-radius: 24px;
+    overflow: hidden; background: #000; box-shadow: 0 0 0 3px rgba(255,255,255,.15); flex: none; }
+  #video { width: 100%; height: 100%; object-fit: cover; }
+  #scan-frame { position: absolute; inset: 12%; border: 3px dashed rgba(255,255,255,.6); border-radius: 18px; }
+  .play-circle {
+    position: relative; width: min(210px, 55vw); aspect-ratio: 1; border-radius: 50%; flex: none;
+    background: linear-gradient(135deg, var(--accent), #b5179e);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 3.6rem; color: #fff; box-shadow: 0 10px 44px rgba(255,61,129,.45);
+    transition: transform .15s;
+  }
+  .play-circle:active { transform: scale(.95); }
+  .play-circle:focus-visible { outline: 3px solid var(--accent2); outline-offset: 4px; }
+  .play-circle.sp { background: linear-gradient(135deg, #1db954, #128a3e); box-shadow: 0 10px 44px rgba(29,185,84,.4); }
+  /* טבעת התקדמות סביב כפתור הנגינה */
+  .pc-ring { position: absolute; inset: -9px; transform: rotate(-90deg); pointer-events: none; }
+  .pc-ring circle { fill: none; stroke-width: 5; }
+  .pc-track { stroke: rgba(255,255,255,.16); }
+  .pc-fill { stroke: var(--accent2); stroke-linecap: round;
+    stroke-dasharray: 339.3; stroke-dashoffset: 339.3; transition: stroke-dashoffset .25s linear; }
+  .play-circle.loading .pc-fill { stroke: rgba(255,255,255,.5);
+    stroke-dasharray: 60 280; animation: spin 1.1s linear infinite; }
+  @keyframes spin { to { stroke-dashoffset: -340 } }
+  .bars { display: flex; gap: 6px; height: 42px; align-items: flex-end; }
+  .bars span { width: 9px; border-radius: 4px; background: var(--accent2); animation: eq 1s infinite ease-in-out; }
+  .bars span:nth-child(2) { animation-delay: .15s } .bars span:nth-child(3) { animation-delay: .3s }
+  .bars span:nth-child(4) { animation-delay: .45s } .bars span:nth-child(5) { animation-delay: .6s }
+  @keyframes eq { 0%,100% { height: 10px } 50% { height: 42px } }
+  .bars.paused span { animation-play-state: paused; }
+  .year-reveal { font-size: 4.4rem; font-weight: 800; color: var(--accent2); }
+  .song-reveal { font-size: 1.45rem; font-weight: 700; }
+  .artist-reveal { font-size: 1.1rem; color: var(--muted); }
+
+  /* כפתור החשיפה עמום עד שנשמע צליל בסיבוב הזה */
+  #s-play .big.alt { background: none; box-shadow: none; border: 2px solid rgba(255,255,255,.28);
+    color: rgba(246,242,255,.5); transition: all .35s ease; }
+  #s-play.heard .big.alt { background: linear-gradient(135deg, #3a0ca3, #4361ee);
+    box-shadow: 0 8px 30px rgba(67,97,238,.35); border-color: transparent; color: #fff; }
+
+  /* עזרה ומשוב במסך הסריקה */
+  #scan-help { display: none; flex-direction: column; align-items: center; gap: 10px; }
+  #scan-help.on { display: flex; }
+  #scan-toast { position: absolute; inset-inline: 12px; bottom: 12px; background: rgba(0,0,0,.72);
+    border-radius: 12px; padding: 10px 12px; font-size: .9rem; opacity: 0; transition: opacity .3s;
+    pointer-events: none; }
+  #scan-toast.on { opacity: 1; }
+
+  /* כוריאוגרפיה לרגע החשיפה */
+  #s-reveal.play .flash { position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(circle at 50% 45%, rgba(255,183,3,.55), transparent 60%);
+    animation: flash .7s ease-out forwards; }
+  @keyframes flash { 0% { opacity: 0; transform: scale(.4) } 25% { opacity: 1 } 100% { opacity: 0; transform: scale(1.5) } }
+  #s-reveal.play .year-reveal { animation: yearIn .55s cubic-bezier(.2,.9,.25,1.2) both; }
+  @keyframes yearIn { 0% { opacity: 0; filter: blur(18px); transform: scale(1.6) } 100% { opacity: 1; filter: blur(0); transform: scale(1) } }
+  #s-reveal.play .rv-step { animation: stepIn .45s ease-out both; }
+  #s-reveal.play .rv-step:nth-of-type(1) { animation-delay: .30s }
+  #s-reveal.play .rv-step:nth-of-type(2) { animation-delay: .36s }
+  #s-reveal.play .rv-step:nth-of-type(3) { animation-delay: .42s }
+  @keyframes stepIn { 0% { opacity: 0; transform: translateY(10px) } 100% { opacity: 1; transform: none } }
+  @media (prefers-reduced-motion: reduce) {
+    #s-reveal.play .flash { display: none }
+    #s-reveal.play .year-reveal, #s-reveal.play .rv-step { animation: none }
+    .bars span { animation: none; height: 22px }
+  }
+  .note { font-size: .9rem; color: var(--muted); max-width: 330px; line-height: 1.55; }
+  .badge { background: rgba(255,255,255,.12); border-radius: 999px; padding: 6px 16px; font-size: .9rem; }
+  .badge.sp { background: rgba(29,185,84,.25); }
+  input, select {
+    font-family: inherit; font-size: 1.1rem; padding: 12px; border-radius: 12px; border: 0;
+    text-align: center; width: min(300px, 84vw); background: rgba(255,255,255,.94); color: #222;
+  }
+  .err { color: #ff8fa3; font-weight: 600; max-width: 330px; line-height: 1.5; overflow-wrap: anywhere; }
+  .footer-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .gear { position: absolute; top: max(14px, env(safe-area-inset-top)); left: 14px;
+    background: rgba(255,255,255,.1); border-radius: 50%; width: 44px; height: 44px; font-size: 1.3rem; }
+  .set-block { background: rgba(255,255,255,.07); border-radius: 18px; padding: 16px;
+    width: min(340px, 90vw); display: flex; flex-direction: column; gap: 10px; }
+  .set-block .h { font-weight: 700; }
+  a.splink { color: #1db954; font-weight: 700; text-decoration: none; font-size: 1.05rem; }
+  .radio-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .radio-row button { padding: 10px 14px; border-radius: 12px; background: rgba(255,255,255,.12); color: var(--text); }
+  .radio-row button.on { background: var(--accent); color: #fff; font-weight: 700; }
+  #dev-list button.on { background: var(--good); color: #fff; font-weight: 700; }
+
+  /* מדף פעולות תחתון קבוע: הפעולה הראשית תמיד באותו גובה בכל מסך.
+     המדף הוא פריט גמיש רגיל ולא ממוקם מוחלט, אחרת במסך שנגלל הוא יורד מהעין. */
+  .screen.shelf { justify-content: space-between; padding: 20px 16px calc(16px + env(safe-area-inset-bottom)); overflow: hidden; }
+  .screen.shelf > .body { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 16px; width: 100%; min-height: 0; overflow-y: auto; }
+  .shelf-bar { flex: 0 0 auto; width: 100%; padding-top: 12px;
+    display: flex; flex-direction: column; align-items: center; gap: 8px; }
+
+  /* מקלדת ספרות משלנו */
+  #pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: min(300px, 82vw); }
+  #pad button { padding: 16px 0; font-size: 1.5rem; font-weight: 700;
+    background: rgba(255,255,255,.12); color: var(--text); }
+  #pad button:active { background: rgba(255,255,255,.24); }
+  #pad-display { font-size: 2.6rem; font-weight: 800; letter-spacing: 4px; min-height: 3rem; direction: ltr; }
+  #pad-hint { font-size: .9rem; min-height: 1.2rem; }
+  #pad-hint.ok { color: var(--good); } #pad-hint.bad { color: #ff8fa3; }
+  .deck-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .deck-row button { padding: 10px 14px; border-radius: 12px; background: rgba(255,255,255,.12); color: var(--text); }
+  .deck-row button.on { background: var(--accent); color: #fff; font-weight: 700; }
+
+  /* אנימציית מסך הבית: תקליט פועם שממנו יוצאות טבעות צליל */
+  #home-fx { position: absolute; inset: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 0; }
+  #s-home > *:not(#home-fx) { position: relative; z-index: 1; }
+  @media (prefers-reduced-motion: reduce) { #home-fx { display: none; } }
+</style>
+</head>
+<body>
+<svg style="display:none" aria-hidden="true"><defs>
+<symbol id="i-cam" viewBox="0 0 24 24"><path d="M3 8h3l2-2h8l2 2h3v11H3z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+<symbol id="i-key" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.2 2.7-5.5 6-5.5s6 2.3 6 5.5"/><path d="M16 5.5a3 3 0 0 1 0 6M18 20c0-2.6-1-4.4-2.5-5.4"/></symbol>
+<symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-1.5 5.5"/><path d="M20 5v6h-6"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"/></symbol>
+<symbol id="i-note" viewBox="0 0 24 24"><path d="M9 18V5l10-2v13"/><circle cx="6.5" cy="18" r="2.6"/><circle cx="16.5" cy="16" r="2.6"/></symbol>
+<symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></symbol>
+<symbol id="i-card" viewBox="0 0 24 24"><rect x="3" y="4" width="13" height="17" rx="2"/><path d="M18 7l3 1.4-4 12.2-3-1"/></symbol>
+<symbol id="i-head" viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="2.5" y="13" width="4.5" height="7" rx="2"/><rect x="17" y="13" width="4.5" height="7" rx="2"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></symbol>
+<symbol id="i-home" viewBox="0 0 24 24"><path d="M3.5 11L12 4l8.5 7"/><path d="M6 10v10h12V10"/></symbol>
+<symbol id="i-speaker" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19.5 6a9 9 0 0 1 0 12"/></symbol>
+<symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5"/></symbol>
+<symbol id="i-dice" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M8.5 8.5h.01M15.5 8.5h.01M12 12h.01M8.5 15.5h.01M15.5 15.5h.01"/></symbol>
+<symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.6-7-9.4A4.1 4.1 0 0 1 12 7.6 4.1 4.1 0 0 1 19 10.6C19 15.4 12 20 12 20z"/></symbol>
+<symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.5 2.5 5 13.5h5.5L10 21.5 19 10.5h-5.7z"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+</defs></svg>
+<svg style="display:none" aria-hidden="true"><defs>
+<g id="i-cam"><path d="M3 8a2 2 0 0 1 2-2h2l1.2-2h7.6L17 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><circle cx="12" cy="12.5" r="3.5"/></g>
+<g id="i-keypad"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h.01M12 9h.01M17 9h.01M7 13h.01M12 13h.01M17 13h.01M8 17h8"/></g>
+<g id="i-users"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 5.5a3 3 0 0 1 0 5M18 20a5.5 5.5 0 0 0-3-4.9"/></g>
+<g id="i-chart"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></g>
+<g id="i-refresh"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></g>
+<g id="i-gear"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.4M12 19.1v2.4M21.5 12h-2.4M4.9 12H2.5M18.7 5.3l-1.7 1.7M7 17l-1.7 1.7M18.7 18.7 17 17M7 7 5.3 5.3"/></g>
+<g id="i-head"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="2.5" y="13.5" width="4" height="6" rx="1.6"/><rect x="17.5" y="13.5" width="4" height="6" rx="1.6"/></g>
+<g id="i-home"><path d="M3 10.5 12 3l9 7.5M5.5 9.5V20h13V9.5"/></g>
+<g id="i-plus"><path d="M12 5v14M5 12h14"/></g>
+<g id="i-dice"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 8h.01M16 8h.01M12 12h.01M8 16h.01M16 16h.01"/></g>
+<g id="i-card"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M7 9h4M7 13h7"/></g>
+<g id="i-search"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></g>
+<g id="i-speaker"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19.5 6a9 9 0 0 1 0 12"/></g>
+<g id="i-note"><path d="M9 18V5l10-2v13"/><circle cx="6.5" cy="18" r="2.6"/><circle cx="16.5" cy="16" r="2.6"/></g>
+<g id="i-spark"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/></g>
+<g id="i-check"><path d="m4 12.5 5 5L20 6.5"/></g>
+<g id="i-x"><path d="M6 6l12 12M18 6 6 18"/></g>
+<g id="i-mic"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></g>
+<g id="i-think"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.4a3 3 0 1 1 3.6 3.4v1.4M12.5 18h.01"/></g>
+</defs></svg>
+
+<!-- מסך בית -->
+<div class="screen active" id="s-home">
+  <canvas id="home-fx" aria-hidden="true"></canvas>
+  <button class="gear" aria-label="הגדרות" onclick="App.show('s-settings')"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-gear"/></svg></button>
+  <h1>היטסטר <span class="rmx">רמיקס</span></h1>
+  <div class="tag">אותם קלפים, אותן שנים, שירים חדשים</div>
+  <button class="big" onclick="App.startScan()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-cam"/></svg>סרוק קלף</button>
+  <button class="big alt" onclick="App.show('s-manual')"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-keypad"/></svg>הקלדת מספר קלף</button>
+  <div class="footer-row">
+    <button class="small" onclick="App.show('s-players')"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-users"/></svg>שחקנים</button>
+    <button class="small" id="summary-btn" style="display:none" onclick="App.show('s-summary')"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chart"/></svg>סיכום הערב</button>
+    <button class="small" onclick="App.resetNight()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-refresh"/></svg>ערב חדש</button>
+  </div>
+  <div class="footer-row">
+    <span class="badge" id="used-count"></span>
+    <span class="badge sp" id="sp-badge" style="display:none"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-head"/></svg>ספוטיפיי מחובר</span>
+    <span class="badge" id="mode-badge" style="display:none"></span>
+  </div>
+</div>
+
+<!-- מסך שחקנים -->
+<div class="screen" id="s-players">
+  <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-users"/></svg>שחקנים</h2>
+  <div class="tag">מי משחק הערב? הסדר קובע את התורות</div>
+  <div id="player-list" style="display:flex;flex-direction:column;gap:8px;width:min(320px,84vw)"></div>
+  <input id="player-input" placeholder="שם" aria-label="שם שחקן" enterkeyhint="done" maxlength="16"
+         onkeydown="if(event.key==='Enter'){event.preventDefault();App.addPlayer()}">
+  <button class="small" onclick="App.addPlayer()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-plus"/></svg>הוסף</button>
+  <div class="note">אפשר גם בלי שחקנים בכלל, ואז המשחק פשוט לא סופר</div>
+  <button class="big" onclick="App.show('s-home')"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-dice"/></svg>מוכנים</button>
+</div>
+
+<!-- מסך סיכום ערב -->
+<div class="screen" id="s-summary">
+  <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chart"/></svg>סיכום הערב</h2>
+  <div id="sum-players" style="display:flex;flex-direction:column;gap:8px;width:min(340px,90vw)"></div>
+  <div class="note" style="max-height:32vh;overflow-y:auto" id="sum-songs"></div>
+  <button class="big" onclick="App.show('s-home')"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-card"/></svg>חזרה</button>
+</div>
+
+<!-- מסך הגדרות -->
+<div class="screen" id="s-settings">
+  <h2>הגדרות</h2>
+  <div class="set-block">
+    <div class="h">חיבור לספוטיפיי (רצועות מלאות)</div>
+    <div class="note">דורש חשבון פרימיום. ההשמעה תתבצע דרך אפליקציית ספוטיפיי שבטלפון, בלי לחשוף את פרטי השיר במסך המשחק.</div>
+    <input id="sp-client" placeholder="Client ID" dir="ltr" autocomplete="off">
+    <div class="note" id="sp-status">לא מחובר</div>
+    <button class="big green" id="sp-connect-btn" onclick="App.spConnect()">התחבר לספוטיפיי</button>
+    <button class="small" id="sp-disconnect-btn" style="display:none" onclick="App.spDisconnect()">התנתק</button>
+  </div>
+  <div class="set-block">
+    <div class="h">מצב השמעה</div>
+    <div class="radio-row">
+      <button id="mode-full" onclick="App.setMode('full')">רצועות מלאות</button>
+      <button id="mode-preview" onclick="App.setMode('preview')">קטעי 30 שניות</button>
+    </div>
+    <div class="note">קטעי 30 השניות מגיעים משרתי אפל ואינם דורשים שום חשבון.</div>
+    <div class="note">ברצועות מלאות השיר מתנגן מהתחלה, אבל שם השיר מופיע במרכז הבקרה ובמסך הנעילה של הטלפון. הפכו את הטלפון או השאירו אותו נעול בזמן ההאזנה.</div>
+    <button class="small" onclick="App.diagnose()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-search"/></svg>בדיקת חיבור</button>
+    <div class="note" id="diag-out" dir="ltr" style="white-space:pre-wrap;text-align:left"></div>
+  </div>
+  <div class="set-block">
+    <div class="h">אילו חפיסות על השולחן</div>
+    <div class="note">סימון חפיסה מוסיף לה כפתור מהיר במסך ההקלדה. קלף שנסרק תמיד מזוהה לפי הקוד שלו.</div>
+    <div class="deck-row" id="table-decks"></div>
+  </div>
+  <div class="set-block">
+    <div class="h">מצב משחק</div>
+    <div class="radio-row" id="game-modes"></div>
+    <div class="note" id="mode-note"></div>
+  </div>
+  <div class="set-block">
+    <div class="h">איפה לנגן (רצועות מלאות)</div>
+    <div class="note">הכי אמין: רמקול, טלוויזיה או מחשב שמחוברים לספוטיפיי. הטלפון עצמו עובד, אבל נרדם כשעוברים למצלמה.</div>
+    <div id="dev-list" style="display:flex;flex-direction:column;gap:8px"></div>
+    <button class="small" onclick="App.refreshDevices()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-refresh"/></svg>רענן רשימת מכשירים</button>
+    <a class="splink" id="dev-wake" href="https://open.spotify.com/track/3pf96IFggfQuT6Gafqx2rt" target="_blank" rel="noopener" style="display:none"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-speaker"/></svg>להעיר את ספוטיפיי (ינגן שיר פתיחה קצר)</a>
+  </div>
+  <button class="small" onclick="App.show('s-home')">חזרה</button>
+</div>
+
+<!-- מסך סריקה -->
+<div class="screen" id="s-scan">
+  <div id="video-wrap">
+    <video id="video" playsinline muted></video>
+    <div id="scan-frame"></div>
+    <div id="scan-toast"></div>
+  </div>
+  <div class="tag">כוון את המצלמה אל הקוד שעל הקלף</div>
+  <div id="scan-help">
+    <div class="note">לא מצליח לקרוא? קרבו לחצי מטר, ושימו לב שהיד לא מטילה צל על הקוד.</div>
+    <button class="small" onclick="App.stopScan(); App.show('s-manual')"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-keypad"/></svg>להקליד את המספר במקום</button>
+  </div>
+  <button class="small" onclick="App.stopScan(); App.show('s-home')">ביטול</button>
+</div>
+
+<!-- מסך הקלדה ידנית -->
+<div class="screen shelf" id="s-manual">
+  <div class="body">
+    <div class="tag">מספר הקלף מודפס בפינת הקלף</div>
+    <div class="deck-row" id="deck-row"></div>
+    <div id="pad-display" aria-live="polite">‏</div>
+    <div class="note" id="pad-hint" role="status" aria-live="polite"></div>
+    <div id="pad">
+      <button onclick="App.pad('1')">1</button><button onclick="App.pad('2')">2</button><button onclick="App.pad('3')">3</button>
+      <button onclick="App.pad('4')">4</button><button onclick="App.pad('5')">5</button><button onclick="App.pad('6')">6</button>
+      <button onclick="App.pad('7')">7</button><button onclick="App.pad('8')">8</button><button onclick="App.pad('9')">9</button>
+      <button onclick="App.pad('back')" aria-label="מחק ספרה">⌫</button>
+      <button onclick="App.pad('0')">0</button>
+      <button onclick="App.pad('clear')" aria-label="נקה">C</button>
+    </div>
+  </div>
+  <div class="shelf-bar">
+    <button class="big" id="pad-go" onclick="App.manualGo()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-note"/></svg>קדימה</button>
+    <button class="small" onclick="App.show('s-home')">חזרה</button>
+  </div>
+</div>
+
+<!-- מסך נגינה -->
+<div class="screen shelf" id="s-play">
+  <div class="body">
+  <div class="badge" id="turn-badge" style="display:none;background:rgba(255,61,129,.25)"></div>
+  <div class="badge" id="play-status" role="status" aria-live="polite">מכין שיר...</div>
+  <button class="play-circle" id="play-btn" onclick="App.togglePlay()" aria-label="נגן או השהה">
+    <svg class="pc-ring" viewBox="0 0 120 120" aria-hidden="true">
+      <circle class="pc-track" cx="60" cy="60" r="54"></circle>
+      <circle class="pc-fill" id="pc-fill" cx="60" cy="60" r="54"></circle>
+    </svg>
+    <span id="pc-icon">▶</span>
+  </button>
+  <div class="bars paused" id="eq" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+  <div class="note">האזינו ונחשו: מתי השיר יצא? מקמו את הקלף בציר הזמן שלכם ורק אז חשפו</div>
+  <div id="wake-panel" style="display:none;flex-direction:column;gap:10px;align-items:center">
+    <div class="note">ספוטיפיי ישן. הקשה אחת מעירה אותו, חוזרים לכאן, והכול ממשיך לבד.</div>
+    <a class="big green" style="display:block;text-decoration:none;padding:16px 10px" href="https://open.spotify.com/track/3pf96IFggfQuT6Gafqx2rt" target="_blank" rel="noopener"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-speaker"/></svg>להעיר את ספוטיפיי</a>
+    <button class="small" onclick="App.retryDevices()">חזרתי, בדוק שוב</button>
+  </div>
+  </div>
+  <div class="shelf-bar">
+    <button class="big alt" onclick="App.reveal()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-spark"/></svg>חשוף</button>
+    <div class="footer-row">
+      <button class="small" onclick="App.anotherSong()">שיר אחר מאותה שנה</button>
+      <button class="small" onclick="App.nextCard()">קלף הבא</button>
+    </div>
+  </div>
+</div>
+
+<!-- מסך חשיפה -->
+<div class="screen shelf" id="s-reveal">
+  <div class="flash"></div>
+  <div class="body">
+    <div class="year-reveal" id="rv-year"></div>
+    <div class="song-reveal rv-step" id="rv-title"></div>
+    <div class="artist-reveal rv-step" id="rv-artist"></div>
+    <div class="note rv-step" id="rv-orig"></div>
+    <a class="splink" id="rv-splink" target="_blank" rel="noopener" style="display:none"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-head"/></svg>פתח בספוטיפיי</a>
+    <div class="footer-row" id="judge-row" style="display:none">
+      <button class="big green" style="width:44%;padding:14px" id="judge-hit" onclick="App.judge(true)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-check"/></svg>צדק</button>
+      <button class="big" style="width:44%;padding:14px;background:rgba(255,255,255,.15);box-shadow:none" id="judge-miss" onclick="App.judge(false)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x"/></svg>פספס</button>
+    </div>
+  </div>
+  <div class="shelf-bar">
+    <button class="big" onclick="App.nextCard()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-card"/></svg>קלף הבא</button>
+    <button class="small" onclick="App.stopAudio(); App.show('s-home')">חזרה למסך הבית</button>
+  </div>
+</div>
+
+<!-- מסך שגיאה -->
+<div class="screen" id="s-error">
+  <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="width:3rem;height:3rem;stroke-width:1.5"><use href="#i-think"/></svg>
+  <div class="err" id="err-msg" role="alert"></div>
+  <button class="big" onclick="App.show('s-home')">חזרה</button>
+</div>
+
+<script>
+const App = (() => {
+  // ---------- מצב כללי ----------
+  let CARDS = null, POOL = null;
+  let stream = null, scanTimer = null, helpTimer = null, toastTimer = null;
+  let audio = new Audio();
+  let current = null;                    // {card, sku, num, year, cat, song, sp}
+  let spPlaying = false;
+  let lastInput = 'scan';                // מאיפה הגיע הקלף האחרון, לחזרה מהירה
+  let preparing = false;                 // חוסם לחיצת נגן בזמן שהסיבוב עוד נטען
+  let wakeLock = null;
+  let loopsLeft = 0;
+  const LOOP_BUDGET = 3;                 // כדקה וחצי, ואז דעיכה רכה במקום לולאה אינסופית
+  const usedKey = 'hitster_remix_used_v1';
+  const used = new Set(JSON.parse(localStorage.getItem(usedKey) || '[]'));
+  const $ = id => document.getElementById(id);
+
+  const show = id => {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    $(id).classList.add('active');
+    if (id !== 's-play') preparing = false;
+    if (id === 's-home') { updateHome(); fx.start(); } else fx.stop();
+    if (id === 's-settings') renderSettings();
+    if (id === 's-players') renderPlayers();
+    if (id === 's-summary') renderSummary();
+  };
+  // רשת ביטחון: שום מספר שנה לא יגיע למסך לפני החשיפה, גם אם עריכה עתידית תחזיר אותו
+  const stripYears = msg => String(msg).replace(/\b(19|20)\d{2}\b/g, 'הזאת');
+  const fail = msg => {
+    const onReveal = document.querySelector('.screen.active') === $('s-reveal');
+    $('err-msg').textContent = onReveal ? msg : stripYears(msg);
+    show('s-error');
+  };
+
+  async function loadData() {
+    if (CARDS && POOL) return true;
+    try {
+      const [c, p] = await Promise.all([
+        fetch('data/cards.json').then(r => r.json()),
+        fetch('data/pool.json').then(r => r.json()),
+      ]);
+      CARDS = c; POOL = p;
+      renderDeckRow();
+      return true;
+    } catch (e) { fail('קבצי הנתונים לא נטענו. בדוק חיבור לאינטרנט.'); return false; }
+  }
+
+  function updateHome() {
+    $('used-count').textContent = `נוגנו הערב: ${used.size}`;
+    $('sp-badge').style.display = sp.connected() ? '' : 'none';
+    $('summary-btn').style.display = nightLog.length ? '' : 'none';
+    const md = modeDef();
+    const mb = $('mode-badge');
+    mb.style.display = md.k === 'normal' ? 'none' : '';
+    mb.innerHTML = `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#${md.icon}"/></svg>${md.name}`;
+  }
+
+  // ---------- ספוטיפיי: הרשאות + שליטה במכשיר ----------
+  const sp = (() => {
+    const LS_ID = 'sp_client_id', LS_TOK = 'sp_tokens', LS_VER = 'sp_verifier';
+    // נרמול הנתיב: אותה כתובת חוזרת בין כניסה דרך התיקייה ובין כניסה דרך index.html
+    const redirect = () => location.origin + location.pathname.replace(/index\.html$/, '');
+    const clientId = () => (localStorage.getItem(LS_ID) || '').trim();
+    const toks = () => { try { return JSON.parse(localStorage.getItem(LS_TOK)); } catch (e) { return null; } };
+    const save = t => localStorage.setItem(LS_TOK, JSON.stringify(t));
+    const connected = () => !!(toks() && toks().refresh_token);
+    // האם ההרשאה שניתנה כוללת את ההיקף המבוקש; חיבורים ישנים חסרים את הרשאת ההזרמה
+    const hasScope = s => ((toks() || {}).scope || '').split(' ').includes(s);
+
+    const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf)))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+    async function login() {
+      const id = clientId();
+      if (!id) return fail('כדי להתחבר לספוטיפיי צריך להדביק קודם את מזהה האפליקציה בהגדרות.');
+      const verifier = b64url(crypto.getRandomValues(new Uint8Array(48)));
+      localStorage.setItem(LS_VER, verifier);
+      const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+      const q = new URLSearchParams({
+        client_id: id, response_type: 'code', redirect_uri: redirect(),
+        scope: 'streaming user-read-email user-read-private user-modify-playback-state user-read-playback-state',
+        code_challenge_method: 'S256', code_challenge: challenge,
+      });
+      location.href = 'https://accounts.spotify.com/authorize?' + q;
+    }
+
+    async function tokenReq(body) {
+      const r = await fetch('https://accounts.spotify.com/api/token', {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(body),
+      });
+      if (!r.ok) {
+        let body = ''; try { body = await r.text(); } catch (e2) {}
+        // אסימון ריענון שנפסל: מנקים מיד, אחרת האפליקציה תיראה מחוברת ותיכשל לנצח
+        if (r.status === 400 && /invalid_grant/.test(body)) localStorage.removeItem(LS_TOK);
+        throw new Error('token ' + r.status);
+      }
+      const d = await r.json();
+      const prev = toks() || {};
+      save({ access_token: d.access_token, refresh_token: d.refresh_token || prev.refresh_token,
+             scope: d.scope || prev.scope || '',
+             exp: Date.now() + (d.expires_in - 60) * 1000 });
+    }
+
+    async function handleRedirect() {
+      const q = new URLSearchParams(location.search);
+      if (q.get('error')) {                       // המשתמש ביטל את מסך האישור של ספוטיפיי
+        history.replaceState({}, '', redirect());
+        fail('החיבור לספוטיפיי בוטל. אפשר לנסות שוב דרך ההגדרות.');
+        return;
+      }
+      const code = q.get('code');
+      if (!code) return;
+      try {
+        await tokenReq({ grant_type: 'authorization_code', code, redirect_uri: redirect(),
+                         client_id: clientId(), code_verifier: localStorage.getItem(LS_VER) });
+        history.replaceState({}, '', redirect());
+        setMode('full');
+      } catch (e) { history.replaceState({}, '', redirect()); fail('החיבור לספוטיפיי נכשל. נסו שוב.'); }
+    }
+
+    async function token() {
+      const t = toks();
+      if (!t) throw new Error('not connected');
+      if (Date.now() < t.exp) return t.access_token;
+      await tokenReq({ grant_type: 'refresh_token', refresh_token: t.refresh_token, client_id: clientId() });
+      return toks().access_token;
+    }
+
+    async function api(method, path, body) {
+      const tk = await token();
+      const r = await fetch('https://api.spotify.com/v1' + path, {
+        method, headers: { Authorization: 'Bearer ' + tk, 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (r.status === 204) return null;
+      if (!r.ok) {
+        let reason = '';
+        try { const j = JSON.parse(await r.text()); reason = (j.error && (j.error.reason || j.error.message)) || ''; }
+        catch (e2) { /* גוף ריק */ }
+        const e = new Error('api ' + r.status + (reason ? ' ' + reason : ''));
+        e.status = r.status; e.reason = reason;
+        throw e;
+      }
+      const txt = await r.text();
+      return txt ? JSON.parse(txt) : null;
+    }
+
+    // התאמת שיר: חיפוש עם עדיפות לשם השיר (שמות אמנים ישראליים חוזרים בתעתיק)
+    const HEBRE = /[֐-׿]/;
+    const tok = s => new Set((s || '').toLowerCase().replace(/[^\w\s֐-׿']/g, ' ').split(/\s+/).filter(Boolean));
+    const overlap = (a, b) => { if (!a.size) return 0; let n = 0; a.forEach(x => b.has(x) && n++); return n / a.size; };
+
+    async function findTrack(a, t) {
+      const key = 'sp_track::' + a + '::' + t;
+      const cached = localStorage.getItem(key);
+      if (cached) return JSON.parse(cached);
+      for (const q of [`track:"${t}" artist:"${a}"`, `${a} ${t}`, t]) {
+        const d = await api('GET', '/search?' + new URLSearchParams({ q, type: 'track', limit: '10' }));
+        for (const it of (d.tracks && d.tracks.items) || []) {
+          const tOK = overlap(tok(t), tok(it.name)) >= 0.7;
+          const artistNames = it.artists.map(x => x.name).join(' ');
+          const aOK = overlap(tok(a), tok(artistNames)) >= 0.5 ||
+                      (HEBRE.test(a) && !HEBRE.test(artistNames));
+          if (tOK && aOK) {
+            const res = { uri: it.uri, id: it.id };
+            localStorage.setItem(key, JSON.stringify(res));
+            return res;
+          }
+        }
+      }
+      return null;
+    }
+
+    // מכשירים מוגבלים (למשל אפליקציית האייפון במצבים מסוימים) דוחים פקודות, ולכן מסוננים
+    async function devices() {
+      const d = await api('GET', '/me/player/devices');
+      return ((d && d.devices) || []).filter(x => !x.is_restricted);
+    }
+    // סדר עדיפות: הבחירה של המשתמש, מכשיר פעיל, רמקול או מחשב (יציבים), ורק אז הטלפון
+    function pickDevice(list) {
+      const pref = localStorage.getItem('sp_device');
+      const stable = ['Computer', 'Speaker', 'CastAudio', 'CastVideo', 'AVR', 'STB', 'AudioDongle'];
+      return (pref && list.find(x => x.id === pref)) ||
+             list.find(x => x.is_active) ||
+             list.find(x => stable.includes(x.type)) ||
+             list.find(x => x.type === 'Smartphone') || list[0] || null;
+    }
+    async function device() {
+      const d = pickDevice(await devices());
+      return d && d.id;
+    }
+
+    // נגינה מתחילת הרצועה בדיוק: position_ms אפס, ורצועה בודדת בהקשר
+    // כדי שספוטיפיי לא ימשיך אוטומטית לשיר הבא ויסגיר שנה אחרת.
+    async function play(uri, positionMs = 0, preferDevice = null) {
+      const dev = preferDevice || await device();
+      if (!dev) { const e = new Error('nodevice'); e.nodevice = true; throw e; }
+      await api('PUT', '/me/player/repeat?state=off&device_id=' + dev, null).catch(() => {});
+      await api('PUT', '/me/player/shuffle?state=false&device_id=' + dev, null).catch(() => {});
+      await api('PUT', '/me/player/play?device_id=' + dev, { uris: [uri], position_ms: positionMs });
+    }
+    const pause = () => api('PUT', '/me/player/pause', null).catch(() => {});
+    const resume = () => api('PUT', '/me/player/play', null);
+
+    return { login, handleRedirect, connected, hasScope, findTrack, play, pause, resume, device, devices, pickDevice, api, token,
+             clientId, setClientId: v => localStorage.setItem(LS_ID, v.trim()),
+             disconnect: () => localStorage.removeItem(LS_TOK) };
+  })();
+
+  // ---------- נגן מובנה: הופך את הדף עצמו למכשיר נגינה של ספוטיפיי ----------
+  // כך אין תלות באפליקציית ספוטיפיי החיצונית, שבאייפון נרשמת כמכשיר רק כשהיא פעילה.
+  const sdk = (() => {
+    let player = null, deviceId = null, loading = null, failed = null;
+
+    function load() {
+      if (deviceId) return Promise.resolve(deviceId);
+      if (loading) return loading;
+      loading = new Promise((resolve, reject) => {
+        const done = (err, id) => { if (err) { failed = err; reject(err); } else resolve(id); };
+        const timer = setTimeout(() => done(new Error('timeout')), 15000);
+        window.onSpotifyWebPlaybackSDKReady = () => {
+          try {
+            player = new Spotify.Player({
+              name: 'המשחק (רמיקס)',
+              getOAuthToken: cb => sp.token().then(cb).catch(() => {
+                $('play-status').textContent = 'החיבור לספוטיפיי פג. התחברו מחדש בהגדרות.';
+              }),
+              volume: 1,
+            });
+            player.addListener('ready', ({ device_id }) => {
+              clearTimeout(timer); deviceId = device_id; done(null, device_id);
+            });
+            // באייפון החיבור מת בשקט כשעוברים למצלמה או לאפליקציה אחרת
+            player.addListener('not_ready', () => { deviceId = null; });
+            ['initialization_error', 'authentication_error', 'account_error'].forEach(ev =>
+              player.addListener(ev, ({ message }) => { clearTimeout(timer); done(new Error(ev + ': ' + message)); }));
+            player.addListener('autoplay_failed', () => {
+              $('play-status').textContent = 'לחצו שוב כדי להתחיל';
+            });
+            player.connect();
+          } catch (e) { clearTimeout(timer); done(e); }
+        };
+        const s = document.createElement('script');
+        s.src = 'https://sdk.scdn.co/spotify-player.js';
+        s.onerror = () => { clearTimeout(timer); done(new Error('script blocked')); };
+        document.head.appendChild(s);
+      });
+      // כישלון לא ננעל לתמיד: מאפשרים ניסיון טעינה נוסף בהמשך
+      loading.catch(() => { loading = null; });
+      return loading;
+    }
+
+    // מחזיר מזהה מכשיר חי: קיים, או אחרי חיבור מחדש של נגן שנותק
+    async function ensure() {
+      if (deviceId) return deviceId;
+      if (!player) return load();
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => { player.removeListener('ready', on); reject(new Error('reconnect timeout')); }, 12000);
+        const on = ({ device_id }) => { clearTimeout(timer); deviceId = device_id; player.removeListener('ready', on); resolve(device_id); };
+        player.addListener('ready', on);
+        player.connect();
+      });
+    }
+
+    // חיבור מחדש בכפייה: לניתוקים שקטים שבהם ספוטיפיי לא שלח אירוע ניתוק,
+    // והמזהה שבידינו נראה תקין אבל מצביע על מכשיר מת.
+    async function bounce() {
+      deviceId = null;
+      if (!player) return load();
+      try { await player.disconnect(); } catch (e) {}
+      await new Promise(r => setTimeout(r, 300));
+      return new Promise((resolve, reject) => {
+        const on = ({ device_id }) => { clearTimeout(timer); deviceId = device_id; player.removeListener('ready', on); resolve(device_id); };
+        const timer = setTimeout(() => { player.removeListener('ready', on); reject(new Error('reconnect timeout')); }, 12000);
+        player.addListener('ready', on);
+        player.connect();
+      });
+    }
+
+    return {
+      load, ensure, bounce,
+      id: () => deviceId,
+      error: () => failed,
+      // חייב להיקרא באופן סינכרוני בתוך מאזין הלחיצה, אחרת הדפדפן חוסם את הצליל
+      activate() { try { if (player && player.activateElement) player.activateElement(); } catch (e) {} },
+    };
+  })();
+
+  // ---------- הגדרות ----------
+  const mode = () => localStorage.getItem('play_mode') || (sp.connected() ? 'full' : 'preview');
+  function setMode(m) {
+    localStorage.setItem('play_mode', m);
+    renderSettings();
+  }
+  function renderSettings() {
+    $('sp-client').value = sp.clientId();
+    const needsReauth = sp.connected() && !sp.hasScope('streaming');
+    $('sp-status').textContent = !sp.connected() ? 'לא מחובר'
+      : needsReauth ? 'מחובר, אבל נדרש חיבור מחודש כדי להפעיל את הנגן המובנה'
+      : 'מחובר ✓ (פרימיום נדרש לרצועות מלאות)';
+    $('sp-connect-btn').style.display = (!sp.connected() || needsReauth) ? '' : 'none';
+    $('sp-connect-btn').textContent = needsReauth ? 'התחבר מחדש (הרשאה חדשה לנגן)' : 'התחבר לספוטיפיי';
+    $('sp-disconnect-btn').style.display = sp.connected() ? '' : 'none';
+    $('mode-full').classList.toggle('on', mode() === 'full');
+    $('mode-preview').classList.toggle('on', mode() === 'preview');
+    renderModes();
+    renderTableDecks();
+    refreshDevices();
+  }
+  // אבחון: מציג בדיוק מה ספוטיפיי מחזיר, כדי לא לנחש מה נכשל
+  async function diagnose() {
+    const out = $('diag-out');
+    out.textContent = 'בודק...';
+    const lines = [];
+    try {
+      const me = await sp.api('GET', '/me');
+      lines.push(`account: ${me.display_name || me.id}`);
+      lines.push(`product: ${me.product}` + (me.product === 'premium' ? ' ✅' : ' ❌ נדרש פרימיום'));
+      lines.push(`country: ${me.country}`);
+    } catch (e) { lines.push(`/me failed: ${e.status || e.message}`); }
+    try {
+      const d = await sp.api('GET', '/me/player/devices');
+      const list = (d && d.devices) || [];
+      lines.push(`devices: ${list.length}`);
+      list.forEach(x => lines.push(`  - ${x.name} [${x.type}] active=${x.is_active} restricted=${x.is_restricted}`));
+      if (!list.length) lines.push('  (open Spotify and play a second, then re-check)');
+    } catch (e) { lines.push(`/devices failed: ${e.status || e.message}`); }
+    try {
+      const p = await sp.api('GET', '/me/player');
+      lines.push(p ? `player: ${p.is_playing ? 'playing' : 'paused'} on ${p.device && p.device.name}`
+                   : 'player: no active session (204)');
+    } catch (e) { lines.push(`/player failed: ${e.status || e.message}`); }
+    lines.push(`scopes: ${((JSON.parse(localStorage.getItem('sp_tokens') || '{}')).scope) || '(none saved)'}`);
+    if (!sp.hasScope('streaming')) {
+      lines.push('built-in player: BLOCKED, missing "streaming" scope. Reconnect in settings.');
+    } else {
+      try {
+        await sdk.load();
+        lines.push(`built-in player: ready (${sdk.id()})`);
+      } catch (e) { lines.push(`built-in player: FAILED ${e.message}`); }
+    }
+    out.textContent = lines.join('\n');
+  }
+
+  function spConnect() { sp.setClientId($('sp-client').value); sp.login(); }
+  function spDisconnect() { sp.disconnect(); renderSettings(); updateHome(); }
+
+  // ---------- פענוח קוד ----------
+  function parseCode(text) {
+    let m = text.match(/hitstergame\.com\/[a-z]{2}\/([a-z]{4}\d{4})\/0*(\d{1,5})/i);
+    if (m) return { sku: m[1].toLowerCase(), num: m[2] };
+    // קוד ללא מזהה חפיסה: לא מניחים בשקט שזו החפיסה הראשונה. אם רק חפיסה אחת
+    // על השולחן, היא הבחירה; אם יותר, מסמנים שצריך לשאול את השחקן.
+    m = text.match(/hitstergame\.com\/([a-z]{2})\/0*(\d{1,5})/i);
+    if (m && ['il', 'he', 'iw'].includes(m[1].toLowerCase())) {
+      const decks = tableDecks();
+      if (decks.length === 1) return { sku: decks[0], num: m[2] };
+      return { sku: null, num: m[2], ambiguous: true };
+    }
+    return null;
+  }
+
+  // ---------- סריקה ----------
+  async function startScan() {
+    fx.dive();                      // הטבעות נשאבות אל תוך התקליט בזמן שהמצלמה נדלקת
+    if (!await loadData()) return;
+    show('s-scan');
+    $('scan-help').classList.remove('on');
+    helpTimer = setTimeout(() => $('scan-help').classList.add('on'), 6000);
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 } }, audio: false });
+    } catch (e) {
+      stopScan();
+      show('s-manual');
+      $('scan-toast').textContent = '';
+      padVal = ''; renderPad('אין גישה למצלמה, הקלידו את מספר הקלף');
+      return;
+    }
+    const video = $('video');
+    video.srcObject = stream;
+    await video.play();
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const detector = ('BarcodeDetector' in window) ? new BarcodeDetector({ formats: ['qr_code'] }) : null;
+    scanTimer = setInterval(async () => {
+      if (!video.videoWidth) return;
+      let text = null;
+      if (detector) {
+        try { const codes = await detector.detect(video); if (codes.length) text = codes[0].rawValue; }
+        catch (e) { /* jsQR fallback */ }
+      }
+      if (!text && window.jsQR) {
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
+        if (code) text = code.data;
+      }
+      if (text) {
+        const parsed = parseCode(text);
+        if (parsed && parsed.ambiguous) {
+          // קוד ישן בלי מזהה חפיסה ויש כמה על השולחן: השחקן בוחר, לא אנחנו
+          lastInput = 'manual'; stopScan();
+          padVal = String(parseInt(parsed.num, 10));
+          show('s-manual'); renderDeckRow(); renderPad('הקוד לא ציין חפיסה, בחרו אותה למעלה');
+        }
+        else if (parsed) { lastInput = 'scan'; stopScan(); onCard(parsed.sku, parsed.num); }
+        else toast('זה לא קוד של קלף היטסטר, ממשיך לסרוק');   // המצלמה נשארת פתוחה
+      }
+    }, 350);
+  }
+  function toast(msg) {
+    const t = $('scan-toast');
+    t.textContent = msg; t.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('on'), 2500);
+  }
+  function stopScan() {
+    if (scanTimer) clearInterval(scanTimer), scanTimer = null;
+    if (helpTimer) clearTimeout(helpTimer), helpTimer = null;
+    if (stream) stream.getTracks().forEach(t => t.stop()), stream = null;
+  }
+  async function manualGo() {
+    if (!await loadData()) return;
+    if (padVal) { lastInput = 'manual'; onCard(activeDeck(), padVal); }
+  }
+
+  // ---------- ליבת המשחק ----------
+  function onCard(sku, numRaw) {
+    const num = String(parseInt(numRaw, 10)).padStart(5, '0');
+    const deck = CARDS[sku];
+    if (!deck) return fail(`חפיסה לא מוכרת (${sku}).`);
+    const card = deck.cards[num];
+    if (!card) return fail(`קלף ${parseInt(num, 10)} לא נמצא בחפיסה "${deck.name_he || deck.name}".`);
+    const pick = choose(card.year, card.heb ? 'heb' : 'int');
+    if (!pick) return fail('אין לי שיר חלופי לקלף הזה. סרקו קלף אחר.');
+    current = { card, sku, num, ...pick, sp: null, tried: new Set() };
+    saveRound();
+    preparePlayback();
+  }
+
+  const songKey = s => s.a + '::' + s.t;
+
+  // סדר העדיפויות: שיר טרי בשפה הנכונה, אחר כך טרי בשפה השנייה,
+  // ורק כמוצא אחרון שיר שכבר נוגן הערב, כדי שהמשחק לא ייתקע לעולם.
+  function choose(year, cat, opts = {}) {
+    const yp = POOL[year];
+    if (!yp) return null;
+    const other = cat === 'heb' ? 'int' : 'heb';
+    const rand = list => list[Math.floor(Math.random() * list.length)];
+    const pickFrom = (c, filter) => {
+      const list = (yp[c] || []).filter(filter);
+      return list.length ? { year, cat: c, song: rand(list), repeat: false } : null;
+    };
+    const fresh = s => !used.has(songKey(s));
+    // opts.tried = שירים שכבר נכשלו טכנית בסיבוב הזה; בלעדיו כשל רשת מייצר פינג-פונג אינסופי
+    const ok = s => (!opts.avoid || songKey(s) !== opts.avoid) &&
+                    !(opts.tried && opts.tried.has(songKey(s)));
+    // מצב משחק: קודם שיר טרי שעונה למסנן המצב; אם אין, ממשיכים למאגר המלא
+    const mf = modeDef().filter;
+    if (mf) {
+      const modeHit = pickFrom(cat, s => mf(s) && fresh(s) && ok(s)) ||
+                      pickFrom(other, s => mf(s) && fresh(s) && ok(s)) ||
+                      pickFrom(cat, s => mf(s) && ok(s));      // חזרה בתוך המצב עדיפה על יציאה ממנו
+      if (modeHit) return modeHit;
+    }
+    const hit = pickFrom(cat, s => fresh(s) && ok(s)) || pickFrom(other, s => fresh(s) && ok(s));
+    if (hit) return hit;
+    const again = pickFrom(cat, ok) || pickFrom(other, ok);
+    return again ? { ...again, repeat: true } : null;
+  }
+
+  // ---------- השמעה ----------
+  async function preparePlayback() {
+    const me = current;               // שומר על הסיבוב שבשבילו התחלנו; מגן מפני מרוץ בין קלפים
+    preparing = true;
+    show('s-play');
+    spPlaying = false;
+    loopsLeft = LOOP_BUDGET;
+    showWake(false);
+    renderTurn();
+    $('s-play').classList.remove('heard');
+    const full = mode() === 'full' && sp.connected();
+    $('play-btn').classList.toggle('sp', full);
+    setPlayState('loading', 'טוען שיר...');
+    const s = current.song;
+    if (full) {
+      // מקימים את הנגן המובנה ברקע כבר עכשיו, כדי שיהיה מוכן כשנצטרך אותו
+      if (sp.hasScope('streaming') && !sdk.id() && !sdk.error()) sdk.load().catch(() => {});
+      let found = null;
+      try { found = await sp.findTrack(s.a, s.t); } catch (e) { found = null; }
+      if (current !== me) return;     // המשתמש כבר עבר לקלף אחר
+      current.sp = found;
+      if (!current.sp) {
+        $('play-status').textContent = 'לא נמצא בספוטיפיי, נשתמש בקטע של 30 שניות';
+        return preparePreview();
+      }
+      current.spStarted = false;
+      await armDevice();      // בוחר רמקול, מחשב או טלפון; בלי אף אחד, פאנל העֵרה
+      if (current === me) preparing = false;
+      return;
+    }
+    await preparePreview();
+    if (current === me) preparing = false;
+  }
+
+  // ריפוי כתובת שפגה: רץ רק כשהנגן עצמו נכשל, במקום בדיקה מקדימה בכל סיבוב
+  async function refreshPreview() {
+    const me = current, s = current.song;
+    if (!s.i) return null;
+    try {
+      const d = await fetch(`https://itunes.apple.com/lookup?id=${s.i}&country=IL`).then(r => r.json());
+      if (current !== me) return null;
+      return (d.results && d.results[0] && d.results[0].previewUrl) || null;
+    } catch (e) { return null; }
+  }
+
+  async function preparePreview() {
+    const me = current;
+    const s = current.song;
+    let url = s.p;
+    if (!url) {                       // אין כתובת שמורה: שולפים אחת, אחרת טוענים ישר
+      url = await refreshPreview();
+      if (current !== me) return;
+    }
+    if (!url) {
+      used.add(songKey(s)); persist();
+      current.tried && current.tried.add(songKey(s));   // לא לחזור לשיר שבור באותו סיבוב
+      const alt = choose(current.year, current.cat, { avoid: songKey(s), tried: current.tried });
+      if (alt) { current = { ...current, ...alt, sp: null }; return preparePlayback(); }
+      preparing = false;
+      return fail('לא הצלחתי לטעון אף שיר לקלף הזה. בדקו את החיבור ונסו קלף אחר.');
+    }
+    audio.src = url; audio.loop = false; audio.preload = 'auto'; audio.load();
+    if (!$('play-btn').classList.contains('sp')) $('play-status').textContent = 'שיר מוכן, לחצו לנגינה';
+  }
+
+  // ---------- מצב נגינה אחד ויחיד, שמסונכרן עם האודיו האמיתי ----------
+  // ארבעה מצבים בלבד. אף מקום אחר בקוד לא כותב את סמל הכפתור, ולכן שיחה נכנסת
+  // או נעילת מסך לא יכולות להשאיר סמל השהיה מעל שקט.
+  function setPlayState(state, msg) {
+    const btn = $('play-btn'), icon = $('pc-icon'), eq = $('eq');
+    btn.classList.toggle('loading', state === 'loading');
+    icon.textContent = state === 'playing' ? '⏸' : '▶';
+    btn.setAttribute('aria-label', state === 'playing' ? 'השהה' : 'נגן');
+    eq.classList.toggle('paused', state !== 'playing');
+    if (state !== 'playing') setProgress(0);
+    if (msg !== undefined) $('play-status').textContent = msg;
+  }
+  function setProgress(frac) {
+    const C = 339.3;
+    $('pc-fill').style.strokeDashoffset = String(C - Math.max(0, Math.min(1, frac)) * C);
+  }
+  ['play', 'playing'].forEach(ev => audio.addEventListener(ev, () => {
+    if (!current || current.sp) return;
+    setPlayState('playing'); keepAwake();
+  }));
+  ['pause', 'ended', 'emptied', 'stalled'].forEach(ev => audio.addEventListener(ev, () => {
+    if (!current || current.sp) return;
+    if (ev === 'pause' || ev === 'emptied') setPlayState('paused');
+  }));
+  audio.addEventListener('timeupdate', () => {
+    if (!current || current.sp || !audio.duration) return;
+    setProgress(audio.currentTime / audio.duration);
+  });
+  // כתובת שפגה: מרעננים אותה מול אפל ומנסים שוב, בלי להטריח את השחקן
+  audio.addEventListener('error', async () => {
+    if (!current || current.sp || !audio.src) return;
+    const me = current;
+    setPlayState('loading', 'מרענן את השיר...');
+    const fresh = await refreshPreview();
+    if (current !== me) return;
+    if (fresh) { audio.src = fresh; audio.load(); setPlayState('paused', 'שיר מוכן, לחצו לנגינה'); }
+    else { current.tried && current.tried.add(songKey(current.song)); anotherSong(); }
+  });
+
+  async function togglePlay() {
+    // חייב להיות הדבר הראשון, לפני כל המתנה, אחרת הדפדפן באייפון חוסם את הצליל
+    if (current && current.sp) sdk.activate();
+    if (preparing) { $('play-status').textContent = 'עוד רגע, השיר נטען...'; return; }
+    const playing = current && current.sp ? spPlaying : !audio.paused;
+    if (playing) {
+      if (current.sp) { sp.pause(); spPlaying = false; setPlayState('paused'); }
+      else audio.pause();     // מאזין ה-pause יעדכן את המצב
+      return;
+    }
+    try {
+      if (current.sp) {
+        // בתחילת סיבוב: נגינה מתחילת הרצועה. אחרי עצירה באמצע: המשך מאותה נקודה.
+        if (!current.spStarted) { await playFull(current.sp.uri); current.spStarted = true; }
+        else {
+          try { await sp.resume(); }
+          catch (e) {
+            if (e && e.status === 404) await playFull(current.sp.uri);   // המכשיר מת בהפסקה, מתחילים מההתחלה
+            else throw e;
+          }
+        }
+        spPlaying = true;
+      }
+      else {
+        if (loopsLeft <= 0) { loopsLeft = LOOP_BUDGET; audio.currentTime = 0; audio.volume = 1; }
+        await audio.play();
+      }
+      if (current.sp) setPlayState('playing');   // באודיו מקומי המאזינים עושים זאת
+      $('s-play').classList.add('heard');
+      keepAwake();
+      used.add(songKey(current.song)); persist();
+      saveRound();
+    } catch (e) {
+      setPlayState('paused');
+      if (e && e.wake) return;                    // פאנל ההעֵרה כבר מוצג, לא שגיאה
+      if (e && e.nodevice) { showWake(true); return; }
+      if (e && e.status === 403 && /premium/i.test(e.reason || ''))
+        return fail('רצועות מלאות דורשות חשבון ספוטיפיי פרימיום. עברו בהגדרות למצב "קטעי 30 שניות" כדי לשחק בלי חשבון.');
+      fail(`הנגינה נחסמה. פרטים: ${e && (e.message || e.status) || 'לא ידוע'}`);
+    }
+  }
+
+  // עיקרון חדש, לפי איך שספוטיפיי באמת עובד: דפדפן אינו יכול להעיר את האפליקציה,
+  // אבל פקודת נגינה עם מזהה מפורש עובדת על כל מכשיר שרשום, גם אם אינו פעיל.
+  // לכן משלמים הקשה אחת של העֵרה בתחילת הערב, ומשם הכול רץ בלי מעברי אפליקציה.
+  const showWake = on => { $('wake-panel').style.display = on ? 'flex' : 'none'; };
+
+  const withTimeout = (p, ms) =>
+    Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+
+  async function armDevice() {
+    const me = current;
+    let list = [];
+    try { list = await sp.devices(); } catch (e) {}
+    if (current !== me) return null;
+    let dev = sp.pickDevice(list);
+    // אין מכשיר חיצוני: מנסים את הנגן המובנה של הדף, עם תקרת המתנה קצרה
+    if (!dev && sp.hasScope('streaming')) {
+      if (sdk.id()) dev = { id: sdk.id(), name: 'המשחק' };
+      else {
+        try { dev = { id: await withTimeout(sdk.ensure(), 6000), name: 'המשחק' }; }
+        catch (e) { dev = null; }
+        if (current !== me) return null;
+      }
+    }
+    current.dev = dev ? dev.id : null;
+    showWake(!dev);
+    $('play-status').textContent = dev
+      ? `רצועה מלאה מוכנה <svg class="ic"><use href="#i-head"/></svg>${dev.name ? '(' + dev.name + ')' : ''}`
+      : 'ספוטיפיי ישן, העירו אותו פעם אחת';
+    return current.dev;
+  }
+
+  async function playFull(uri) {
+    const gone = e => e && (e.status === 404 || e.nodevice);
+    if (!current.dev) await armDevice();
+    if (current.dev) {
+      try { await sp.play(uri, 0, current.dev); return; }
+      catch (e) { if (!gone(e)) throw e; }
+    }
+    // המכשיר נעלם: רשימה טרייה וניסיון אחד נוסף. אם אין כלום, פאנל העֵרה ולא שגיאה.
+    $('play-status').textContent = 'מחפש מכשיר...';
+    current.dev = null;
+    const id = await armDevice();
+    if (!id) { const e = new Error('wake'); e.wake = true; throw e; }
+    await sp.play(uri, 0, id);
+  }
+
+  // אחרי שהמשתמש חזר מהעֵרת ספוטיפיי: מחכים שהמכשיר יופיע, עוצרים את שיר ההעֵרה
+  async function retryDevices() {
+    const t0 = Date.now();
+    while (Date.now() - t0 < 8000) {
+      if (await armDevice()) { sp.pause(); return; }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+
+  // רשימת המכשירים במסך ההגדרות, עם בחירה שנשמרת
+  async function refreshDevices() {
+    const box = $('dev-list');
+    if (!sp.connected()) { box.textContent = ''; $('dev-wake').style.display = 'none'; return; }
+    box.textContent = 'טוען...';
+    let list = [];
+    try { list = await sp.devices(); } catch (e) { box.textContent = 'שגיאה בטעינת המכשירים'; return; }
+    box.innerHTML = '';
+    $('dev-wake').style.display = list.length ? 'none' : '';
+    if (!list.length) { box.textContent = 'לא נמצאו מכשירים. העירו את ספוטיפיי ולחצו רענן.'; return; }
+    const chosen = localStorage.getItem('sp_device');
+    for (const d of list) {
+      const b = document.createElement('button');
+      b.className = 'small' + ((chosen === d.id || (!chosen && d.is_active)) ? ' on' : '');
+      b.style.width = '100%';
+      b.textContent = `${d.name} (${d.type})` + (d.is_active ? ' <svg class="ic"><use href="#i-note"/></svg>' : '');
+      b.onclick = () => { localStorage.setItem('sp_device', d.id); refreshDevices(); };
+      box.appendChild(b);
+    }
+  }
+
+  function persist() { localStorage.setItem(usedKey, JSON.stringify([...used])); }
+
+  // ---------- שרידות סיבוב ----------
+  // רענון או נעילה ארוכה לא יאבדו את הקלף והשיר. אותו קלף יחזיר את אותו שיר,
+  // ולא שיר אחר רק משום שהראשון כבר סומן כמנוגן.
+  const ROUND_KEY = 'round_v1', ROUND_TTL = 6 * 3600e3;
+  function saveRound() {
+    if (!current) return;
+    localStorage.setItem(ROUND_KEY, JSON.stringify({
+      t: Date.now(), sku: current.sku, num: current.num,
+      year: current.year, cat: current.cat, song: current.song, judged: !!current.judged,
+    }));
+  }
+  function restoreRound() {
+    let r = null;
+    try { r = JSON.parse(localStorage.getItem(ROUND_KEY) || 'null'); } catch (e) {}
+    if (!r || Date.now() - r.t > ROUND_TTL) return false;
+    const deck = CARDS && CARDS[r.sku];
+    const card = deck && deck.cards[r.num];
+    if (!card) return false;
+    current = { card, sku: r.sku, num: r.num, year: r.year, cat: r.cat,
+                song: r.song, sp: null, judged: r.judged, tried: new Set() };
+    preparePlayback();
+    return true;
+  }
+  const clearRound = () => localStorage.removeItem(ROUND_KEY);
+
+  // ---------- מקלדת ספרות ובחירת חפיסה ----------
+  // אימות חי מול רשימת הקלפים: מספר שגוי כבר לא מגיע למסך שגיאה.
+  let padVal = '';
+  const activeDeck = () => localStorage.getItem('last_deck') || 'aaaj0001';
+  // אילו חפיסות על השולחן הערב; ברירת מחדל, כל מה שקיים במסד
+  const tableDecks = () => {
+    try {
+      const v = JSON.parse(localStorage.getItem('table_decks') || 'null');
+      if (Array.isArray(v) && v.length) return v;
+    } catch (e) {}
+    return CARDS ? Object.keys(CARDS) : ['aaaj0001'];
+  };
+
+  function setTableDeck(sku) {
+    const cur = new Set(tableDecks());
+    cur.has(sku) ? cur.delete(sku) : cur.add(sku);
+    if (!cur.size) return;                        // תמיד לפחות חפיסה אחת
+    localStorage.setItem('table_decks', JSON.stringify([...cur]));
+    renderTableDecks(); renderDeckRow(); renderPad();
+  }
+  function renderTableDecks() {
+    const box = $('table-decks');
+    if (!box || !CARDS) return;
+    const on = new Set(tableDecks());
+    box.innerHTML = '';
+    for (const [sku, d] of Object.entries(CARDS)) {
+      const b = document.createElement('button');
+      b.textContent = (d.name_he || d.name).replace('היטסטר ', '');
+      b.className = on.has(sku) ? 'on' : '';
+      b.onclick = () => setTableDeck(sku);
+      box.appendChild(b);
+    }
+  }
+
+  function renderDeckRow() {
+    const row = $('deck-row');
+    if (!row || !CARDS) return;
+    const decks = tableDecks();
+    row.innerHTML = '';
+    if (decks.length < 2) { row.style.display = 'none'; }   // חפיסה אחת: בלי בורר מיותר
+    else {
+      row.style.display = 'flex';
+      for (const sku of decks) {
+        const d = CARDS[sku]; if (!d) continue;
+        const b = document.createElement('button');
+        b.textContent = (d.name_he || d.name).replace('היטסטר ', '');
+        b.className = sku === activeDeck() ? 'on' : '';
+        b.onclick = () => { localStorage.setItem('last_deck', sku); renderDeckRow(); renderPad(); };
+        row.appendChild(b);
+      }
+    }
+    if (!decks.includes(activeDeck())) localStorage.setItem('last_deck', decks[0]);
+  }
+
+  function renderPad(msg) {
+    $('pad-display').textContent = padVal || '‏';
+    const hint = $('pad-hint');
+    const deck = CARDS && CARDS[activeDeck()];
+    if (msg) { hint.textContent = msg; hint.className = 'note'; }
+    else if (!padVal) { hint.textContent = deck ? (deck.name_he || deck.name) : ''; hint.className = 'note'; }
+    else if (deck && deck.cards[String(parseInt(padVal, 10)).padStart(5, '0')]) {
+      hint.textContent = '✔ קלף קיים'; hint.className = 'note ok';
+    } else {
+      hint.textContent = 'אין קלף כזה בחפיסה'; hint.className = 'note bad';
+    }
+    const valid = !!(deck && padVal && deck.cards[String(parseInt(padVal, 10)).padStart(5, '0')]);
+    $('pad-go').style.opacity = valid ? '1' : '.4';
+  }
+
+  function pad(k) {
+    if (k === 'back') padVal = padVal.slice(0, -1);
+    else if (k === 'clear') padVal = '';
+    else if (padVal.length < 5) padVal += k;
+    renderPad();
+    // מספר תקין ומלא: קדימה בלי לחיצה נוספת
+    const deck = CARDS && CARDS[activeDeck()];
+    if (deck && padVal.length >= 3 && deck.cards[String(parseInt(padVal, 10)).padStart(5, '0')]
+        && !deck.cards[String(parseInt(padVal + '0', 10)).padStart(5, '0')]) manualGo();
+  }
+
+  // ---------- שחקנים, תורות ושיפוט ----------
+  // ציר הקלפים על השולחן נשאר הפוסק; האפליקציה רק אומרת של מי התור ורושמת צדק או פספס.
+  let players = JSON.parse(localStorage.getItem('players_v1') || '[]');
+  let turnIdx = parseInt(localStorage.getItem('turn_idx') || '0', 10) || 0;
+  let nightLog = JSON.parse(localStorage.getItem('night_log_v1') || '[]');
+  const savePlayers = () => { localStorage.setItem('players_v1', JSON.stringify(players));
+                              localStorage.setItem('turn_idx', String(turnIdx)); };
+  const saveLog = () => localStorage.setItem('night_log_v1', JSON.stringify(nightLog));
+  const turnName = () => players.length ? players[turnIdx % players.length] : null;
+
+  function addPlayer() {
+    const v = $('player-input').value.trim();
+    if (!v || players.includes(v) || players.length >= 8) return;
+    players.push(v); savePlayers();
+    $('player-input').value = ''; $('player-input').focus();
+    renderPlayers();
+  }
+  function removePlayer(name) {
+    players = players.filter(p => p !== name);
+    turnIdx = 0; savePlayers(); renderPlayers();
+  }
+  function renderPlayers() {
+    const box = $('player-list');
+    box.innerHTML = '';
+    players.forEach((p, i) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:8px;align-items:center';
+      const b = document.createElement('button');
+      b.className = 'small'; b.style.flex = '1';
+      b.textContent = (i === turnIdx % players.length ? '<svg class="ic"><use href="#i-mic"/></svg>' : '') + p;
+      const x = document.createElement('button');
+      x.className = 'small'; x.textContent = '✕';
+      x.onclick = () => removePlayer(p);
+      row.appendChild(b); row.appendChild(x);
+      box.appendChild(row);
+    });
+  }
+  function renderTurn() {
+    const n = turnName();
+    $('turn-badge').style.display = n ? '' : 'none';
+    if (n) $('turn-badge').textContent = `<svg class="ic"><use href="#i-mic"/></svg>התור של ${n}`;
+  }
+  // שיפוט אחרי חשיפה: רושם, מקדם תור, ונועל את שני הכפתורים עד הקלף הבא
+  function judge(hit) {
+    if (!current || current.judged) return;
+    current.judged = true;
+    nightLog.push({ p: turnName(), hit: !!hit, year: current.year,
+                    a: current.song.a, t: current.song.t,
+                    oa: current.card.a, ot: current.card.t });
+    saveLog();
+    if (players.length) { turnIdx = (turnIdx + 1) % players.length; savePlayers(); }
+    $('judge-hit').style.opacity = hit ? '1' : '.35';
+    $('judge-miss').style.opacity = hit ? '.35' : '1';
+    $('judge-hit').disabled = $('judge-miss').disabled = true;
+  }
+  function renderSummary() {
+    const box = $('sum-players');
+    box.innerHTML = '';
+    const byP = {};
+    for (const r of nightLog) {
+      const key = r.p || 'ללא שם';
+      (byP[key] = byP[key] || []).push(r.hit);
+    }
+    for (const [p, hits] of Object.entries(byP)) {
+      let streak = 0, best = 0;
+      for (const h of hits) { streak = h ? streak + 1 : 0; best = Math.max(best, streak); }
+      const n = hits.length, ok = hits.filter(Boolean).length;
+      const div = document.createElement('div');
+      div.className = 'badge';
+      div.style.cssText = 'text-align:right;width:100%';
+      div.textContent = `${p}: ${ok} מתוך ${n} (${n ? Math.round(100 * ok / n) : 0}%), רצף שיא ${best}`;
+      box.appendChild(div);
+    }
+    if (!nightLog.length) box.textContent = 'עוד לא נרשמו סיבובים הערב';
+    $('sum-songs').innerHTML = nightLog.map(r =>
+      `${r.hit ? '✔' : '✘'} ${r.year} · ${r.t} (${r.a})`).join('<br>');
+  }
+
+  // ---------- מצבי משחק ----------
+  // כל מצב הוא מסנן על מאגר החלופות. אם לשנה מסוימת אין שיר שעונה למסנן,
+  // המשחק נופל בשקט למאגר המלא, כדי שאף קלף לא ייתקע.
+  const MODES = [
+    { k: 'normal', name: 'רגיל', icon: 'i-note',
+      note: 'כל המאגר, 1,356 שירים מאומתים.', filter: null },
+    { k: 'nostalgia', name: 'נוסטלגיה', icon: 'i-home',
+      note: 'רק שירים מהספרייה והפלייליסטים שלכם.', filter: s => s.lib },
+    { k: 'love', name: 'שירי אהבה', icon: 'i-heart',
+      note: 'רומנטיקה, בלדות וגעגוע.', filter: s => s.love },
+    { k: 'party', name: 'מסיבה מקפיצה', icon: 'i-bolt',
+      note: 'קצבי בלבד, מה שמקפיץ את הסלון.', filter: s => s.party },
+  ];
+  const gameMode = () => {
+    const k = localStorage.getItem('game_mode');
+    // תאימות לאחור להגדרת הנוסטלגיה הישנה
+    if (!k) return localStorage.getItem('nostalgia') === '1' ? 'nostalgia' : 'normal';
+    return MODES.some(m => m.k === k) ? k : 'normal';
+  };
+  const modeDef = () => MODES.find(m => m.k === gameMode()) || MODES[0];
+  function setGameMode(k) {
+    localStorage.setItem('game_mode', k);
+    renderSettings(); updateHome();
+  }
+  // כמה שירים באמת זמינים במצב הזה, כדי לא להבטיח מה שאין
+  function modeCount(filter) {
+    if (!POOL || !filter) return null;
+    let n = 0;
+    for (const cats of Object.values(POOL))
+      for (const list of Object.values(cats)) n += list.filter(filter).length;
+    return n;
+  }
+  function renderModes() {
+    const box = $('game-modes');
+    if (!box) return;
+    box.innerHTML = '';
+    for (const m of MODES) {
+      const b = document.createElement('button');
+      b.className = m.k === gameMode() ? 'on' : '';
+      b.innerHTML = `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#${m.icon}"/></svg>${m.name}`;
+      b.onclick = () => setGameMode(m.k);
+      box.appendChild(b);
+    }
+    const cur = modeDef();
+    const n = modeCount(cur.filter);
+    $('mode-note').textContent = cur.note + (n !== null ? ` ${n} שירים זמינים.` : '');
+  }
+  function setNostalgia(on) { setGameMode(on ? 'nostalgia' : 'normal'); }   // תאימות לאחור
+
+  // ---------- מסך דלוק כל עוד מסך הנגינה פתוח ----------
+  async function keepAwake() {
+    try {
+      if ('wakeLock' in navigator && !wakeLock && $('s-play').classList.contains('active'))
+        wakeLock = await navigator.wakeLock.request('screen');
+    } catch (e) { /* לא נתמך, ממשיכים כרגיל */ }
+  }
+  function releaseWake() {
+    if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if ($('s-play').classList.contains('active') && !audio.paused) keepAwake();
+    // חזרנו מהעֵרת ספוטיפיי: בודקים אוטומטית, בלי לחכות ללחיצה על "בדוק שוב"
+    if (current && current.sp && $('wake-panel').style.display !== 'none') retryDevices();
+  });
+
+  // ---------- תקציב חזרות עם דעיכה רכה ----------
+  audio.addEventListener('ended', () => {
+    loopsLeft--;
+    if (loopsLeft > 0) { audio.currentTime = 0; audio.play().catch(() => {}); return; }
+    fadeToRest();
+  });
+  function fadeToRest() {
+    const step = () => {
+      if (audio.volume > 0.05) { audio.volume = Math.max(0, audio.volume - 0.1); setTimeout(step, 50); }
+      else {
+        audio.pause(); audio.currentTime = 0; audio.volume = 1;
+        $('play-btn').textContent = '▶'; $('eq').classList.add('paused');
+        $('play-status').textContent = 'אפשר לשמוע שוב';
+        releaseWake();
+      }
+    };
+    step();
+  }
+
+  // הכפתור הזה לעולם אינו נכשל: אם נגמרו החלופות הטריות הוא מנגן שוב שיר שכבר נוגן,
+  // בשקט ובלי הודעה שתסגיר את השנה.
+  function anotherSong() {
+    used.add(songKey(current.song)); persist();
+    const alt = choose(current.year, current.cat, { avoid: songKey(current.song) });
+    if (!alt) return;
+    stopAudio(true);      // מנקה את המקור הישן, שלא ניתן יהיה להמשיך אותו בטעות
+    current = { ...current, ...alt, sp: null };
+    preparePlayback();
+  }
+
+  function reveal() {
+    const rv = $('s-reveal');
+    rv.classList.remove('play'); void rv.offsetWidth;   // איתחול האנימציה בכל סיבוב
+    rv.classList.add('play');
+    $('judge-row').style.display = players.length ? 'flex' : 'none';
+    $('judge-hit').disabled = $('judge-miss').disabled = false;
+    $('judge-hit').style.opacity = $('judge-miss').style.opacity = '1';
+    $('rv-year').textContent = current.year;
+    $('rv-title').textContent = current.song.t;
+    $('rv-artist').textContent = current.song.a;
+    const oc = current.card;
+    $('rv-orig').textContent = oc.t ? `החליף את: ${oc.t} של ${oc.a}` : '';
+    const link = $('rv-splink');
+    if (current.sp) { link.href = 'https://open.spotify.com/track/' + current.sp.id; link.style.display = ''; }
+    else link.style.display = 'none';
+    show('s-reveal');
+  }
+
+  function stopAudio(clear = true) {
+    audio.pause();
+    if (current && current.sp && spPlaying) { sp.pause(); spPlaying = false; }
+    if (clear) audio.removeAttribute('src'), audio.load();
+    releaseWake();
+  }
+
+  // חזרה ישירה למקור שממנו הגיע הקלף הקודם, כדי שסיבוב יעלה לחיצה אחת
+  function nextCard() {
+    stopAudio();
+    clearRound();
+    if (lastInput === 'scan') return startScan();
+    show('s-manual');
+    padVal = ''; renderPad();
+  }
+
+  function resetNight() {
+    if (!confirm('לאפס את הערב? רשימת השירים שנוגנו והניקוד יימחקו.')) return;
+    used.clear(); persist(); clearRound();
+    nightLog = []; saveLog();
+    turnIdx = 0; savePlayers();
+    updateHome();
+  }
+
+  // ---------- אנימציית מסך הבית ----------
+  // תקליט שמסתובב, טבעות צליל שיוצאות ממנו, ותווים שצפים כלפי מעלה.
+  // רצה רק כשמסך הבית פתוח, נעצרת ביציאה ממנו וכשעוברים לאפליקציה אחרת.
+  const fx = (() => {
+    const cv = $('home-fx');
+    if (!cv || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return { start(){}, stop(){}, dive(){} };
+    const ctx = cv.getContext('2d');
+    const NOTES = ['♪', '♫', '♬', '♩'];
+    const TINT = ['#ff3d81', '#ffb703', '#4361ee', '#b5179e'];
+    let raf = 0, t = 0, w = 0, h = 0, cx = 0, cy = 0, R = 0, dive = 0;
+    let rings = [], notes = [];
+
+    function size() {
+      const dpr = Math.min(devicePixelRatio || 1, 2);
+      w = cv.clientWidth; h = cv.clientHeight;
+      cv.width = w * dpr; cv.height = h * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      cx = w / 2; cy = h * 0.42; R = Math.min(w, h) * 0.13;
+    }
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    function spawnNote() {
+      notes.push({ x: cx + rnd(-R, R), y: cy, vx: rnd(-0.25, 0.25), vy: rnd(-0.7, -0.35),
+                   life: 0, max: rnd(150, 260), size: rnd(13, 24),
+                   ch: NOTES[(Math.random() * NOTES.length) | 0],
+                   tint: TINT[(Math.random() * TINT.length) | 0], spin: rnd(-0.02, 0.02) });
+    }
+
+    function frame() {
+      t++;
+      ctx.clearRect(0, 0, w, h);
+      const pulse = 1 + Math.sin(t / 26) * 0.035;
+      const k = dive ? Math.max(0, 1 - dive / 26) : 1;      // הצניחה פנימה בלחיצה על סריקה
+
+      if (t % 46 === 0 && !dive) rings.push({ r: R * 1.05, a: 0.5 });
+      if (t % 34 === 0 && notes.length < 14 && !dive) spawnNote();
+
+      for (const g of rings) {
+        g.r += dive ? -2.6 : 0.85;
+        g.a -= dive ? 0.02 : 0.0045;
+        if (g.a <= 0) continue;
+        ctx.beginPath();
+        ctx.arc(cx, cy, Math.max(0, g.r), 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255,183,3,${g.a.toFixed(3)})`;
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+      }
+      rings = rings.filter(g => g.a > 0 && g.r > 0 && g.r < Math.max(w, h));
+
+      for (const n of notes) {
+        n.life++; n.x += n.vx; n.y += n.vy;
+        if (dive) { n.x += (cx - n.x) * 0.12; n.y += (cy - n.y) * 0.12; }
+        const a = Math.max(0, (1 - n.life / n.max)) * 0.5 * k;
+        if (a <= 0) continue;
+        ctx.save();
+        ctx.translate(n.x, n.y);
+        ctx.rotate(Math.sin(t * n.spin) * 0.4);
+        ctx.globalAlpha = a;
+        ctx.fillStyle = n.tint;
+        ctx.font = `${n.size}px -apple-system, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(n.ch, 0, 0);
+        ctx.restore();
+      }
+      notes = notes.filter(n => n.life < n.max && n.y > -40);
+
+      // התקליט עצמו
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(pulse * (dive ? 1 + dive / 55 : 1), pulse * (dive ? 1 + dive / 55 : 1));
+      ctx.rotate(t / 190);
+      ctx.globalAlpha = 0.5 * k + (dive ? 0.35 : 0);
+      ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2);
+      ctx.fillStyle = '#0d0618'; ctx.fill();
+      for (let i = 1; i <= 4; i++) {
+        ctx.beginPath(); ctx.arc(0, 0, R * (0.32 + i * 0.16), 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(185,168,216,.28)'; ctx.lineWidth = 1; ctx.stroke();
+      }
+      ctx.beginPath(); ctx.arc(0, 0, R * 0.3, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff3d81'; ctx.fill();
+      ctx.beginPath(); ctx.arc(0, 0, R * 0.07, 0, Math.PI * 2);
+      ctx.fillStyle = '#12081f'; ctx.fill();
+      ctx.restore();
+
+      if (dive) { dive++; if (dive > 26) { dive = 0; rings = []; notes = []; } }
+      raf = requestAnimationFrame(frame);
+    }
+
+    return {
+      start() { if (raf) return; size(); addEventListener('resize', size); raf = requestAnimationFrame(frame); },
+      stop() { cancelAnimationFrame(raf); raf = 0; removeEventListener('resize', size); ctx.clearRect(0, 0, w, h); },
+      dive() { if (raf) dive = 1; },   // הטבעות נשאבות פנימה אל התקליט
+    };
+  })();
+
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
+  sp.handleRedirect().then(async () => {
+    const ok = await loadData();
+    updateHome(); renderSettings();
+    // סיבוב שנקטע ברענון או בנעילה ארוכה חוזר בדיוק כפי שהיה
+    if (ok) { renderDeckRow(); renderPad(); restoreRound(); }
+  });
+  // מסך הבית פעיל כבר בטעינה, ולכן האנימציה מופעלת כאן ולא רק במעבר מסך
+  if ($('s-home').classList.contains('active')) fx.start();
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) fx.stop();
+    else if ($('s-home').classList.contains('active')) fx.start();
+  });
+  return { show, startScan, stopScan, manualGo, togglePlay, reveal, anotherSong,
+           stopAudio, nextCard, resetNight, setMode, spConnect, spDisconnect, diagnose,
+           refreshDevices, retryDevices, addPlayer, judge, setNostalgia, setGameMode, pad, setTableDeck };
+})();
+</script>
+</body>
+</html>
