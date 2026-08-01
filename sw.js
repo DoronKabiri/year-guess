@@ -1,14 +1,18 @@
 // היטסטר רמיקס: מטמון מעטפת האפליקציה כדי שתעבוד גם בחיבור חלש
-const CACHE = 'remix-202608011240';
+const CACHE = 'remix-202608011336';
 const SHELL = [
   './',
   './index.html',
+  './qr.js',
+  './party_core.js',
+  './party.js',
   './manifest.webmanifest',
   './data/cards.json',
   './data/pool.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
   'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js',
+  'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js',
 ];
 
 self.addEventListener('install', e => {

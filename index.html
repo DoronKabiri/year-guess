@@ -126,8 +126,12 @@
   }
   .err { color: #ff8fa3; font-weight: 600; max-width: 330px; line-height: 1.5; overflow-wrap: anywhere; }
   .footer-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-  .gear { position: absolute; top: max(14px, env(safe-area-inset-top)); left: 14px;
-    background: rgba(255,255,255,.1); border-radius: 50%; width: 44px; height: 44px; font-size: 1.3rem; }
+  /* גלגל ההגדרות צף בפינה. z-index גבוה מכלל מסך הבית, אחרת הוא נדחק לתוך זרימת המסך */
+  .gear { position: absolute; top: max(14px, env(safe-area-inset-top)); left: 14px; z-index: 3;
+    background: var(--surface-2); border: 1px solid rgba(255,255,255,.22); color: var(--text);
+    border-radius: 50%; width: 46px; height: 46px;
+    display: flex; align-items: center; justify-content: center; }
+  .gear .ic { width: 24px; height: 24px; margin: 0; }
   .set-block { background: rgba(255,255,255,.07); border-radius: 18px; padding: 16px;
     width: min(340px, 90vw); display: flex; flex-direction: column; gap: 10px; }
   .set-block .h { font-weight: 700; }
@@ -157,10 +161,107 @@
   .deck-row button { padding: 10px 14px; border-radius: 12px; background: rgba(255,255,255,.12); color: var(--text); }
   .deck-row button.on { background: var(--accent); color: #fff; font-weight: 700; }
 
+
+  /* ---------- מסיבה בלי קלפים ---------- */
+  .big.alt2 { background: linear-gradient(135deg, #2a9d8f, #1d7d72); box-shadow: 0 8px 30px rgba(42,157,143,.35); }
+  .lg-sub { font-size: .82rem; opacity: .8; font-weight: 500; }
+  .lg-pill { border-radius: 999px; padding: 6px 14px; font-size: .85rem; }
+  .lg-pill.ok { background: rgba(6,214,160,.18); color: #06d6a0; }
+  .lg-pill.wait { background: var(--surface); color: var(--muted); }
+  .lg-pill.bad { background: rgba(247,127,0,.18); color: #ffb703; }
+  /* קוד QR חייב להיות שחור על לבן, אחרת מצלמות לא מפענחות אותו על הרקע הכהה */
+  #lg-qr-wrap { background: #fff; padding: 14px; border-radius: 18px; line-height: 0; }
+  #lg-code { font-size: 3.2rem; font-weight: 800; letter-spacing: 8px; direction: ltr; }
+  #lg-url { color: var(--muted); font-size: .82rem; direction: ltr; }
+  .lg-warn { background: rgba(255,183,3,.14); color: #ffb703; border-radius: 14px;
+             padding: 10px 14px; font-size: .85rem; max-width: 330px; }
+  .lg-seat { display: inline-flex; align-items: center; gap: 7px; border: 2px solid var(--surface-2);
+             border-radius: 999px; padding: 6px 13px; font-size: .9rem; }
+  .lg-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+  #lg-seats, #lg-wait-others { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+
+  #lg-tiles { display: flex; gap: 9px; flex-wrap: wrap; justify-content: center; }
+  .lg-tile { border: 2px solid var(--surface-2); border-radius: 14px; padding: 9px 13px;
+             min-width: 78px; transition: background .25s; }
+  .lg-tile.done { background: rgba(255,255,255,.14); }
+  .lg-tile.off { opacity: .4; }
+  .lg-tile-n { font-weight: 700; font-size: .9rem; }
+  .lg-tile-c { font-size: 1.5rem; font-weight: 800; }
+  .lg-tile-s { font-size: .75rem; color: var(--muted); }
+  #lg-count { font-size: 1rem; color: var(--muted); }
+  #lg-count.full { color: var(--accent2); font-weight: 700; }
+
+  /* ציר הזמן. הזמן זורם מלמעלה למטה, וכל רווח הוא כפתור ברוחב מלא */
+  .lg-tl { display: flex; flex-direction: column; gap: 6px; width: min(340px, 92vw); }
+  .lg-edge { font-size: .74rem; color: var(--muted); }
+  .lg-song { background: var(--surface); border-radius: 12px; padding: 6px 12px;
+             border-inline-start: 3px solid var(--accent2);
+             display: flex; align-items: center; gap: 10px; text-align: start; }
+  .lg-song.pulse { animation: lgPulse 1.5s ease-out; }
+  @keyframes lgPulse { 0%,100% { background: var(--surface) } 30% { background: rgba(255,209,102,.35) } }
+  .lg-y { font-size: 1.3rem; font-weight: 800; color: var(--accent2); flex: none; }
+  .lg-t { font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lg-gap { width: 100%; border: 2px dashed rgba(255,255,255,.35); border-radius: 14px;
+            background: transparent; color: var(--muted); font-size: 1.02rem; padding: 10px;
+            transition: opacity .15s, background .15s; }
+  .lg-gap.sel { background: rgba(255,61,129,.22); border: 3px solid var(--accent);
+                color: #fff; font-weight: 700; }
+  .lg-gap.dim { opacity: .4; }
+  .lg-gap.locked::after { content: ' ✓'; }
+  .lg-first { width: 100%; padding: 26px 12px; font-size: 1.2rem; font-weight: 700; color: #fff;
+              background: linear-gradient(135deg, var(--accent), #b5179e); border-radius: 18px; }
+  .lg-first.sel { outline: 3px solid var(--accent2); }
+  #lg-place-hint { font-size: .9rem; color: var(--muted); min-height: 1.2rem; }
+  #lg-confirm.ghost { background: var(--surface); color: var(--text); box-shadow: none; }
+
+  .lg-rv-tile { border: 2px solid var(--surface-2); border-radius: 14px; padding: 8px 12px; min-width: 96px; }
+  .lg-rv-tile.hit { background: rgba(6,214,160,.16); }
+  .lg-rv-tile.miss { opacity: .55; }
+  .lg-rv-gap { font-size: .74rem; color: var(--muted); }
+  .lg-rv-mark { font-size: 1.3rem; font-weight: 800; }
+  .lg-bull { font-size: .72rem; color: var(--accent2); font-weight: 700; }
+  .lg-near { font-size: .72rem; color: #ffb703; }
+  #lg-rv-seats { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+
+  #lg-nost { background: rgba(255,255,255,.06); border-radius: 16px; padding: 12px;
+             width: min(340px, 92vw); }
+  .lg-nost-h { font-weight: 700; margin-bottom: 8px; }
+  .lg-nost-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .lg-nost-chip { background: var(--surface); border-radius: 12px; padding: 6px 11px; min-width: 62px; }
+  .lg-nost-chip.gold { background: rgba(255,209,102,.24); }
+  .lg-nost-chip.phones::after { content: '🎧'; font-size: .7rem; }
+  .lg-nost-name { font-size: .76rem; color: var(--muted); }
+  .lg-nost-v { font-size: 1.2rem; font-weight: 800; }
+  .lg-nost-sub { font-size: .7rem; color: var(--muted); }
+  .lg-nost-cap { font-size: .72rem; color: var(--muted); margin-top: 8px; }
+
+  .lg-board-row { display: flex; align-items: center; gap: 9px; width: min(340px, 92vw);
+                  background: var(--surface); border-radius: 12px; padding: 8px 11px; }
+  .lg-board-name { font-weight: 700; min-width: 62px; text-align: start; }
+  .lg-bar { flex: 1; height: 9px; background: rgba(255,255,255,.12); border-radius: 6px; overflow: hidden; }
+  .lg-bar i { display: block; height: 100%; }
+  .lg-board-n { font-size: .84rem; color: var(--muted); }
+
+  #lg-wait-circle { width: 128px; height: 128px; border-radius: 50%; display: flex;
+                    align-items: center; justify-content: center; font-weight: 800;
+                    font-size: 1.2rem; color: #fff; }
+  #lg-years { display: flex; gap: 6px; overflow-x: auto; direction: ltr; width: min(340px, 92vw);
+              padding-bottom: 6px; scroll-snap-type: x mandatory; }
+  .lg-year { flex: none; padding: 9px 13px; border-radius: 11px; background: var(--surface);
+             color: var(--text); scroll-snap-align: center; }
+  .lg-year.on { background: var(--accent); color: #fff; font-weight: 700; }
+  .lg-res-mark { font-size: 4.2rem; font-weight: 800; line-height: 1; }
+  .lg-res-mark.hit { color: #06d6a0; } .lg-res-mark.miss { color: var(--muted); }
+  #lg-res-year { font-size: 3.4rem; font-weight: 800; color: var(--accent2); }
+  #lg-drop { position: fixed; inset: 0; background: rgba(10,3,20,.55); z-index: 20;
+             display: none; align-items: flex-end; justify-content: center; padding: 24px; }
+  #lg-drop > div { background: rgba(255,183,3,.2); color: #ffb703; border-radius: 16px;
+                   padding: 14px 20px; font-weight: 700; }
+
   /* אנימציית מסך הבית: תקליט פועם שממנו יוצאות טבעות צליל */
   #home-fx { position: absolute; inset: 0; width: 100%; height: 100%;
     pointer-events: none; z-index: 0; }
-  #s-home > *:not(#home-fx) { position: relative; z-index: 1; }
+  #s-home > *:not(#home-fx):not(.gear) { position: relative; z-index: 1; }
   @media (prefers-reduced-motion: reduce) { #home-fx { display: none; } }
 </style>
 </head>
@@ -217,6 +318,7 @@
   <div class="tag">אותם קלפים, אותן שנים, שירים חדשים</div>
   <button class="big" onclick="App.startScan()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-cam"/></svg>סרוק קלף</button>
   <button class="big alt" onclick="App.show('s-manual')"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-keypad"/></svg>הקלדת מספר קלף</button>
+  <button class="big alt2" onclick="Party.ui.setup()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-users"/></svg>משחק בלי קלפים</button>
   <div class="footer-row">
     <button class="small" onclick="App.show('s-players')"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-users"/></svg>שחקנים</button>
     <button class="small" id="summary-btn" style="display:none" onclick="App.show('s-summary')"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chart"/></svg>סיכום הערב</button>
@@ -228,6 +330,170 @@
     <span class="badge" id="mode-badge" style="display:none"></span>
   </div>
 </div>
+
+
+<!-- ================= מסיבה בלי קלפים ================= -->
+<div class="screen shelf" id="s-lg-setup">
+  <div class="body">
+    <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-users"/></svg>מסיבה בלי קלפים</h2>
+    <div class="tag">כל אחד עם ציר הזמן שלו בטלפון. כולם משבצים בו זמנית, בלי תורות.</div>
+    <div class="set-block">
+      <div class="h">כמה שירים לניצחון</div>
+      <div class="radio-row" id="lg-target"></div>
+    </div>
+    <div class="set-block">
+      <div class="h">מצב משחק</div>
+      <div class="radio-row" id="lg-modes"></div>
+    </div>
+    <div class="note">המכשיר הזה מנגן את המוזיקה. חברו אותו לחשמל והשאירו אותו פתוח על השולחן.</div>
+  </div>
+  <div class="shelf-bar">
+    <button class="big" onclick="Party.ui.open()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-users"/></svg>פתחו חדר</button>
+    <button class="small" onclick="App.show('s-home')">חזרה</button>
+  </div>
+</div>
+
+<div class="screen shelf" id="s-lg-lobby">
+  <div class="body">
+    <span class="lg-pill" id="lg-net">מקימים חדר...</span>
+    <div id="lg-qr-wrap"><canvas id="lg-qr"></canvas></div>
+    <div id="lg-code">----</div>
+    <div id="lg-url"></div>
+    <div class="tag">כוונו את המצלמה של הטלפון לריבוע</div>
+    <div id="lg-seats"></div>
+    <div class="lg-warn">הטלפון הזה מנגן. אל תנעלו אותו ואל תצאו מהאפליקציה.</div>
+  </div>
+  <div class="shelf-bar">
+    <button class="big" id="lg-start" onclick="Party.ui.start()" disabled>צריך עוד שחקן אחד</button>
+    <div class="footer-row">
+      <button class="small" onclick="Party.ui.share()">שלחו קישור</button>
+      <button class="small" onclick="Party.ui.addSoloSeat()">הוסיפו שחקן</button>
+      <button class="small" onclick="Party.ui.quit()">יציאה</button>
+    </div>
+  </div>
+</div>
+
+<div class="screen shelf" id="s-lg-stage">
+  <div class="body">
+    <span class="badge" id="lg-round">סיבוב 1</span>
+    <div id="lg-tiles"></div>
+    <div class="tag">האזינו. כל אחד משבץ בטלפון שלו, בסתר.</div>
+    <div id="lg-count">בוחרים...</div>
+  </div>
+  <div class="shelf-bar">
+    <button class="big" id="lg-reveal-btn" onclick="Party.ui.reveal()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-spark"/></svg>חשוף עכשיו</button>
+    <div class="footer-row">
+      <button class="small" onclick="App.togglePlay()">נגן / עצור</button>
+      <button class="small" onclick="Party.ui.board()">טבלה</button>
+      <button class="small" onclick="Party.ui.quit()">סיום</button>
+    </div>
+  </div>
+</div>
+
+<div class="screen shelf" id="s-lg-reveal">
+  <div class="body">
+    <div class="year-reveal" id="lg-rv-year">1998</div>
+    <div class="rv-step" id="lg-rv-title"></div>
+    <div class="rv-step tag" id="lg-rv-artist"></div>
+    <div id="lg-rv-seats"></div>
+    <div id="lg-nost"></div>
+    <div class="tag" id="lg-rv-note"></div>
+  </div>
+  <div class="shelf-bar">
+    <button class="big" onclick="Party.ui.next()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-note"/></svg>השיר הבא</button>
+    <div class="footer-row">
+      <button class="small" onclick="Party.ui.board()">טבלה</button>
+      <button class="small" onclick="Party.ui.quit()">סיום</button>
+    </div>
+  </div>
+</div>
+
+<div class="screen shelf" id="s-lg-board">
+  <div class="body">
+    <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chart"/></svg>טבלה</h2>
+    <div id="lg-board-list" style="display:flex;flex-direction:column;gap:7px"></div>
+  </div>
+  <div class="shelf-bar"><button class="big" onclick="Party.ui.backToGame()">חזרה למשחק</button></div>
+</div>
+
+<div class="screen shelf" id="s-lg-win">
+  <div class="body">
+    <div style="font-size:3rem">👑</div>
+    <div id="lg-win-name" style="font-size:2.4rem;font-weight:800"></div>
+    <div class="tag" id="lg-win-line"></div>
+    <div class="lg-tl" id="lg-win-tl"></div>
+  </div>
+  <div class="shelf-bar">
+    <button class="big" onclick="Party.ui.start()">עוד סיבוב</button>
+    <button class="small" onclick="Party.ui.quit()">חזרה למסך הבית</button>
+  </div>
+</div>
+
+<div class="screen shelf" id="s-lg-solo">
+  <div class="body">
+    <h2>החיבור בין הטלפונים לא עלה</h2>
+    <div class="tag">אפשר לשחק הכל מהמכשיר הזה, מעבירים אותו מיד ליד. אותם חוקים בדיוק.</div>
+  </div>
+  <div class="shelf-bar">
+    <button class="big" onclick="Party.ui.solo()">מצב מכשיר אחד</button>
+    <button class="small" onclick="Party.ui.open()">לנסות שוב</button>
+    <button class="small" onclick="App.show('s-home')">חזרה</button>
+  </div>
+</div>
+
+<!-- מסכי השחקן -->
+<div class="screen shelf" id="s-lg-join">
+  <div class="body">
+    <h2 id="lg-join-title">מצטרפים לחדר</h2>
+    <input id="lg-name" placeholder="השם שלך" aria-label="שם" maxlength="16" enterkeyhint="done">
+    <div class="note">שנת לידה, לא חובה. רק כדי שהמשחק יגיד מי היה בן כמה כשהשיר יצא.</div>
+    <div id="lg-years"></div>
+    <div class="err" id="lg-join-err"></div>
+    <div class="note">הטלפון שלכם לא ישמיע מוזיקה. היא מגיעה מהמכשיר שעל השולחן.</div>
+  </div>
+  <div class="shelf-bar">
+    <button class="big" onclick="Party.ui.join()">אני בפנים</button>
+    <button class="small" onclick="App.show('s-home')">חזרה</button>
+  </div>
+</div>
+
+<div class="screen shelf" id="s-lg-wait">
+  <div class="body">
+    <div id="lg-wait-circle"></div>
+    <div class="tag">מחכים שיתחילו</div>
+    <div id="lg-wait-others"></div>
+  </div>
+  <div class="shelf-bar"><button class="small" onclick="Party.ui.quit()">יציאה</button></div>
+</div>
+
+<div class="screen shelf" id="s-lg-place">
+  <div class="body">
+    <h2 style="font-size:1.15rem">לאן נכנס השיר?</h2>
+    <div class="badge" id="lg-place-who" style="display:none"></div>
+    <div id="lg-place-hint">הקישו על הרווח הנכון</div>
+    <div class="lg-tl" id="lg-place-tl"></div>
+  </div>
+  <div class="shelf-bar"><button class="big" id="lg-confirm" disabled>קודם בוחרים מקום</button></div>
+</div>
+
+<div class="screen" id="s-lg-watch">
+  <h2 style="font-size:1.8rem">תסתכלו במסך הגדול</h2>
+</div>
+
+<div class="screen shelf" id="s-lg-result">
+  <div class="body">
+    <div class="lg-res-mark" id="lg-res-mark"></div>
+    <div style="font-size:1.3rem;font-weight:700" id="lg-res-verdict"></div>
+    <div id="lg-res-year"></div>
+    <div style="font-weight:700" id="lg-res-title"></div>
+    <div class="tag" id="lg-res-artist"></div>
+    <div class="tag" id="lg-res-left"></div>
+    <div class="lg-tl" id="lg-res-tl"></div>
+  </div>
+  <div class="shelf-bar"><div class="tag">המארח ממשיך לשיר הבא</div></div>
+</div>
+
+<div id="lg-drop"><div>מתחבר מחדש...</div></div>
 
 <!-- מסך שחקנים -->
 <div class="screen" id="s-players">
@@ -384,6 +650,8 @@
   <button class="big" onclick="App.show('s-home')">חזרה</button>
 </div>
 
+<script src="qr.js"></script>
+<script src="party_core.js"></script>
 <script>
 const App = (() => {
   // ---------- מצב כללי ----------
@@ -881,11 +1149,11 @@ const App = (() => {
   async function preparePlayback() {
     const me = current;               // שומר על הסיבוב שבשבילו התחלנו; מגן מפני מרוץ בין קלפים
     preparing = true;
-    show('s-play');
+    // במצב מסיבה המסך שייך למשחק הקבוצתי, ורק המנוע מושאל
+    if (!current.party) { show('s-play'); renderTurn(); }
     spPlaying = false;
     loopsLeft = LOOP_BUDGET;
     showWake(false);
-    renderTurn();
     $('s-play').classList.remove('heard');
     const full = mode() === 'full' && sp.connected();
     $('play-btn').classList.toggle('sp', full);
@@ -963,6 +1231,7 @@ const App = (() => {
         ? 'מתנגן קטע של 30 שניות (לא נמצא בספוטיפיי)' : 'השיר מתנגן';
     if (msg === undefined && state === 'paused' && lastPlayState === 'playing') msg = 'מושהה, לחצו להמשך';
     lastPlayState = state;
+    if (partyState) partyState(state);   // מסך המסיבה משקף את אותו מצב נגינה יחיד
     $('pc-use').setAttribute('href', state === 'playing' ? '#i-pause' : '#i-play');
     btn.setAttribute('aria-label', state === 'playing' ? 'השהה' : 'נגן');
     eq.classList.toggle('paused', state !== 'playing');
@@ -1631,6 +1900,8 @@ const App = (() => {
     if (sp.connected() && sp.hasScope('streaming') && mode() === 'full') sdk.load().catch(() => {});
     const ok = await loadData();
     updateHome(); renderSettings();
+    // קוד הצטרפות בכתובת קודם לכל: אחרת סריקת QR של חבר מחיה קלף ישן
+    if (window.Party && window.Party.ui && window.Party.ui.checkHash()) return;
     // סיבוב שנקטע ברענון או בנעילה ארוכה חוזר בדיוק כפי שהיה
     if (ok) { renderDeckRow(); renderPad(); restoreRound(); }
   });
@@ -1640,10 +1911,40 @@ const App = (() => {
     if (document.hidden) fx.stop();
     else if ($('s-home').classList.contains('active')) fx.start();
   });
+  // ---------- גשר למצב המסיבה ----------
+  // מצב המסיבה יושב בקובץ נפרד ומשתמש כאן במנוע הקיים במקום לשכפל אותו:
+  // אותו מאגר, אותו בורר שירים, אותה השמעה ואותה הגנת שנים.
+  const bridge = {
+    $, show, loadData, stripYears, MODES, primePlayback, keepAwake, releaseWake,
+    pool: () => POOL,
+    used, persist,
+    gameMode: () => gameMode(),
+    fullMode: () => mode() === 'full' && sp.connected(),
+    // מנגן שיר שרירותי מהמאגר. מחזיר הבטחה שנפתרת רק כשצליל באמת יצא,
+    // כי מצב המסיבה מכריז על הסיבוב לטלפונים רק אחרי שהמוזיקה התחילה.
+    async playSong(song, onState) {
+      current = { song, sp: null, tried: new Set(), auto: true, party: true };
+      spPlaying = false;
+      loopsLeft = LOOP_BUDGET;
+      partyState = onState || null;
+      await preparePlayback();
+      return !!(current && current.song === song);
+    },
+    stopSong: () => { stopAudio(true); current = null; partyState = null; },
+    toggle: () => togglePlay(),
+    isPlaying: () => current && current.sp ? spPlaying : !audio.paused,
+    refreshPreview: () => refreshPreview(),
+  };
+  let partyState = null;
+
   return { show, startScan, stopScan, manualGo, togglePlay, reveal, anotherSong,
            stopAudio, nextCard, resetNight, setMode, spConnect, spDisconnect, diagnose,
-           refreshDevices, retryDevices, addPlayer, judge, setNostalgia, setGameMode, pad, setTableDeck };
+           refreshDevices, retryDevices, addPlayer, judge, setNostalgia, setGameMode, pad, setTableDeck,
+           bridge };
 })();
+// const ברמה העליונה אינו מאפיין של window, ומצב המסיבה יושב בקובץ נפרד
+window.App = App;
 </script>
+<script src="party.js"></script>
 </body>
 </html>
