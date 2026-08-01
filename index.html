@@ -679,7 +679,7 @@ const App = (() => {
   const LOOP_BUDGET = 3;                 // כדקה וחצי, ואז דעיכה רכה במקום לולאה אינסופית
   // אם רצועות מלאות נכשלות פעמיים ברצף, הערב ממשיך בקטעי 30 שניות במקום להיתקע.
   // מתאפס ברענון וכשבוחרים מכשיר בהגדרות.
-  let fullFails = 0, fullOff = false;
+  let fullFails = 0, fullOff = false, lastPlayError = null;
   function noteFullFail() {
     if (++fullFails >= 2) {
       fullOff = true;
@@ -831,8 +831,13 @@ const App = (() => {
         throw e;
       }
       const txt = await r.text();
-      return txt ? JSON.parse(txt) : null;
+      if (!txt) return null;
+      // פקודות נגינה מחזירות לפעמים גוף שאינו JSON, ופעם אחת כזאת הפילה סיבוב
+      // שלם למסך שגיאה למרות שהשיר התנגן. תגובה מוצלחת לא תיכשל על הפענוח.
+      try { return JSON.parse(txt); }
+      catch (e) { lastApiOddity = { path, status: r.status, body: txt.slice(0, 120) }; return null; }
     }
+    let lastApiOddity = null;
 
     // התאמת שיר: חיפוש עם עדיפות לשם השיר (שמות אמנים ישראליים חוזרים בתעתיק)
     const HEBRE = /[֐-׿]/;
@@ -842,7 +847,11 @@ const App = (() => {
     async function findTrack(a, t, alt) {
       const key = 'sp_track::' + a + '::' + t;
       const cached = localStorage.getItem(key);
-      if (cached) return JSON.parse(cached);
+      // רשומה פגומה במטמון מרפאה את עצמה במקום להפיל את הסיבוב
+      if (cached) {
+        try { return JSON.parse(cached); }
+        catch (e) { localStorage.removeItem(key); }
+      }
       // כל השאילתות יוצאות בבת אחת והתוצאות נבחנות לפי סדר הדיוק,
       // כי לאמן עברי השאילתה המדויקת נכשלת לרוב והמתנה טורית עולה שניות.
       const qs = [`track:"${t}" artist:"${a}"`, `${a} ${t}`, alt ? `${alt} ${t}` : null, t].filter(Boolean);
@@ -917,6 +926,7 @@ const App = (() => {
     const resume = () => api('PUT', '/me/player/play', null);
 
     return { login, handleRedirect, connected, hasScope, findTrack, play, pause, resume, device, devices, pickDevice, api, token,
+             oddity: () => lastApiOddity,
              clientId, setClientId: v => localStorage.setItem(LS_ID, v.trim()),
              disconnect: () => localStorage.removeItem(LS_TOK) };
   })();
@@ -1027,10 +1037,10 @@ const App = (() => {
     out.textContent = 'בודק...';
     const lines = [];
     try {
-      const me = await sp.api('GET', '/me');
-      lines.push(`account: ${me.display_name || me.id}`);
-      lines.push(`product: ${me.product}` + (me.product === 'premium' ? ' ✅' : ' ❌ נדרש פרימיום'));
-      lines.push(`country: ${me.country}`);
+      const me = await sp.api('GET', '/me') || {};
+      lines.push(`account: ${me.display_name || me.id || '(no body)'}`);
+      lines.push(`product: ${me.product || '?'}` + (me.product === 'premium' ? ' ✅' : ' ❌ נדרש פרימיום'));
+      lines.push(`country: ${me.country || '?'}`);
     } catch (e) { lines.push(`/me failed: ${e.status || e.message}`); }
     try {
       const d = await sp.api('GET', '/me/player/devices');
@@ -1045,6 +1055,11 @@ const App = (() => {
                    : 'player: no active session (204)');
     } catch (e) { lines.push(`/player failed: ${e.status || e.message}`); }
     lines.push(`scopes: ${((JSON.parse(localStorage.getItem('sp_tokens') || '{}')).scope) || '(none saved)'}`);
+    // מה באמת נכשל בנגינה האחרונה, במקום לזרוק טקסט טכני על השחקן באמצע ערב
+    if (lastPlayError) lines.push(`last play error: ${lastPlayError}`);
+    if (fullOff) lines.push('full tracks: OFF for this session (2 failures) -> using 30s previews');
+    const odd = sp.oddity();
+    if (odd) lines.push(`odd api body: ${odd.path} ${odd.status} :: ${odd.body}`);
     if (!sp.hasScope('streaming')) {
       lines.push('built-in player: BLOCKED, missing "streaming" scope. Reconnect in settings.');
     } else {
@@ -1349,10 +1364,12 @@ const App = (() => {
       if (e && e.nodevice) { showWake(true); return; }
       if (e && e.status === 403 && /premium/i.test(e.reason || ''))
         return fail('רצועות מלאות דורשות חשבון ספוטיפיי פרימיום. עברו בהגדרות למצב "קטעי 30 שניות" כדי לשחק בלי חשבון.');
-      // תקלת רשת רגעית אינה סיבה לזרוק את השחקן למסך שגיאה באמצע ערב.
-      // נשארים על הסיבוב, והלחיצה הבאה מנסה שוב.
-      if (e && e.timeout) return setPlayState('paused', 'הרשת איטית. לחצו שוב לנסות.');
-      fail(`הנגינה נחסמה. פרטים: ${e && (e.message || e.status) || 'לא ידוע'}`);
+      // שום תקלה רגעית לא זורקת את השחקן למסך שגיאה באמצע ערב. הקלף נשאר,
+      // השיר נשאר, והלחיצה הבאה מנסה שוב. הפירוט נשמר למסך האבחון בלבד.
+      lastPlayError = (e && (e.message || e.status)) || 'לא ידוע';
+      noteFullFail();
+      setPlayState('paused', e && e.timeout ? 'הרשת איטית. לחצו שוב לנסות.'
+                                            : 'משהו השתבש. לחצו שוב לנסות.');
     }
   }
 
