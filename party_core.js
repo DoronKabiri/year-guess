@@ -187,7 +187,10 @@ const Party = (() => {
     const mf = (B().MODES.find(m => m.k === B().gameMode()) || {}).filter;
     const years = [];
     for (const [y, cats] of Object.entries(pool)) {
-      const all = [...(cats.heb || []), ...(cats.int || [])];
+      // השפה נשמרת על השיר עצמו: רשומות המאגר אינן נושאות אותה, והיא נחוצה
+      // כדי שהחלפה תישאר עברי תמורת עברי
+      const all = [...(cats.heb || []).map(s => ({ ...s, cat: 'heb' })),
+                   ...(cats.int || []).map(s => ({ ...s, cat: 'int' }))];
       const fit = mf ? all.filter(mf) : all;
       const playable = fit.filter(s => s.p || B().fullMode());
       if (playable.length) years.push([Number(y), Math.min(playable.length, 6), playable]);

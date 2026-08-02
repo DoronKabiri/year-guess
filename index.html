@@ -54,6 +54,8 @@
   .small:active { background: var(--surface-2); }
   .big { display: inline-flex; align-items: center; justify-content: center; }
   button:focus-visible, a:focus-visible { outline: 3px solid var(--accent2); outline-offset: 3px; }
+  /* כפתור חסום חייב להיראות חסום. אחרת לחיצה שלא עושה כלום נראית כמו אפליקציה תקועה. */
+  button:disabled { opacity: .45; box-shadow: none; cursor: default; }
   #video-wrap { position: relative; width: min(340px, 88vw); aspect-ratio: 1; border-radius: 24px;
     overflow: hidden; background: #000; box-shadow: 0 0 0 3px rgba(255,255,255,.15); flex: none; }
   #video { width: 100%; height: 100%; object-fit: cover; }
@@ -346,9 +348,13 @@
       <div class="radio-row" id="lg-modes"></div>
     </div>
     <div class="note">המכשיר הזה מנגן את המוזיקה. חברו אותו לחשמל והשאירו אותו פתוח על השולחן.</div>
+    <!-- מי שהמצלמה שלו לא קוראת את הריבוע מקליד את הקוד הגדול שמופיע אצל המארח -->
+    <input id="lg-code-in" inputmode="numeric" maxlength="4" aria-label="קוד חדר"
+           placeholder="קוד בן 4 ספרות" style="display:none">
   </div>
   <div class="shelf-bar">
     <button class="big" onclick="Party.ui.open()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-users"/></svg>פתחו חדר</button>
+    <button class="small" onclick="Party.ui.joinPrompt()">הצטרפות עם קוד</button>
     <button class="small" onclick="App.show('s-home')">חזרה</button>
   </div>
 </div>
@@ -384,6 +390,7 @@
     <button class="big" id="lg-reveal-btn" onclick="Party.ui.reveal()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-spark"/></svg>חשוף עכשיו</button>
     <div class="footer-row">
       <button class="small" onclick="App.togglePlay()">נגן / עצור</button>
+      <button class="small" onclick="Party.ui.retryRound()">שיר אחר</button>
       <button class="small" onclick="Party.ui.board()">טבלה</button>
       <button class="small" onclick="Party.ui.quit()">סיום</button>
     </div>
@@ -493,7 +500,7 @@
   <div class="shelf-bar"><div class="tag">המארח ממשיך לשיר הבא</div></div>
 </div>
 
-<div id="lg-drop"><div>מתחבר מחדש...</div></div>
+<div id="lg-drop"><div><span id="lg-drop-msg">מתחבר מחדש...</span> <button class="small" onclick="Party.ui.quit()">יציאה</button></div></div>
 
 <!-- מסך שחקנים -->
 <div class="screen" id="s-players">
@@ -686,8 +693,16 @@ const App = (() => {
       setPlayState('paused', 'ספוטיפיי לא מגיב. ממשיכים בקטעי 30 שניות.');
     }
   }
+  // קריאה בטוחה מהאחסון המקומי. ערך פגום אחד בזמן הטעינה היה מפיל את כל ה-IIFE,
+  // וכל כפתורי onclick בדף היו מפסיקים לעבוד בזמן שהמסך נראה תקין.
+  const readJSON = (k, d) => {
+    try {
+      const v = JSON.parse(localStorage.getItem(k));
+      return v === null || v === undefined ? d : v;
+    } catch (e) { localStorage.removeItem(k); return d; }
+  };
   const usedKey = 'hitster_remix_used_v1';
-  const used = new Set(JSON.parse(localStorage.getItem(usedKey) || '[]'));
+  const used = new Set(readJSON(usedKey, []));
   const $ = id => document.getElementById(id);
 
   const show = id => {
@@ -759,15 +774,30 @@ const App = (() => {
       location.href = 'https://accounts.spotify.com/authorize?' + q;
     }
 
-    async function tokenReq(body) {
-      const r = await fetch('https://accounts.spotify.com/api/token', {
-        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams(body),
-      });
+    // sentRefresh: האסימון שאיתו יצאה הבקשה. בלעדיו תשובת כישלון של בקשה מיושנת
+    // הייתה מוחקת אסימון חדש ותקין שכבר הספיק להישמר.
+    async function tokenReq(body, sentRefresh) {
+      // גם הבקשה הזאת חייבת תקרת זמן. היא רצה לפני כל פנייה אחרת, וחיבור תקוע
+      // כאן משאיר את המשחק ב"טוען שיר" בלי שאף שומר זמן יגיע אליו.
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), API_TIMEOUT);
+      let r;
+      try {
+        r = await fetch('https://accounts.spotify.com/api/token', {
+          method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams(body), signal: ac.signal,
+        });
+      } catch (e) {
+        const err = new Error(e && e.name === 'AbortError' ? 'token timeout' : 'token network');
+        err.timeout = true;
+        throw err;
+      } finally { clearTimeout(timer); }
       if (!r.ok) {
         let body = ''; try { body = await r.text(); } catch (e2) {}
-        // אסימון ריענון שנפסל: מנקים מיד, אחרת האפליקציה תיראה מחוברת ותיכשל לנצח
-        if (r.status === 400 && /invalid_grant/.test(body)) localStorage.removeItem(LS_TOK);
+        // אסימון ריענון שנפסל: מנקים מיד, אחרת האפליקציה תיראה מחוברת ותיכשל לנצח.
+        // רק אם האסימון השמור הוא זה שנפסל, ולא אחרי שהחליף אותו אסימון חדש.
+        if (r.status === 400 && /invalid_grant/.test(body) &&
+            (!sentRefresh || (toks() || {}).refresh_token === sentRefresh)) localStorage.removeItem(LS_TOK);
         throw new Error('token ' + r.status);
       }
       const d = await r.json();
@@ -794,12 +824,23 @@ const App = (() => {
       } catch (e) { history.replaceState({}, '', redirect()); fail('החיבור לספוטיפיי נכשל. נסו שוב.'); }
     }
 
+    // ריענון יחיד בכל רגע. חיפוש שיר מוציא ארבע פניות במקביל, וכולן מגיעות לכאן
+    // יחד; אסימוני הריענון של ספוטיפיי מתחלפים בכל שימוש, ולכן חמש בקשות
+    // מקבילות עם אותו אסימון היו מנתקות את החשבון באמצע הערב.
+    let refreshing = null;
     async function token() {
       const t = toks();
       if (!t) throw new Error('not connected');
       if (Date.now() < t.exp) return t.access_token;
-      await tokenReq({ grant_type: 'refresh_token', refresh_token: t.refresh_token, client_id: clientId() });
-      return toks().access_token;
+      if (!refreshing) {
+        const sent = t.refresh_token;
+        refreshing = tokenReq({ grant_type: 'refresh_token', refresh_token: sent, client_id: clientId() }, sent)
+          .finally(() => { refreshing = null; });
+      }
+      await refreshing;
+      const n = toks();
+      if (!n) throw new Error('not connected');
+      return n.access_token;
     }
 
     // כל פנייה חייבת תקרת זמן. בלעדיה בקשה תקועה ברשת סלולרית חלשה משאירה
@@ -1206,6 +1247,13 @@ const App = (() => {
   // ---------- השמעה ----------
   async function preparePlayback() {
     const me = current;               // שומר על הסיבוב שבשבילו התחלנו; מגן מפני מרוץ בין קלפים
+    // הדגל נשאר דלוק עד שהנגינה האוטומטית הסתיימה, אחרת הקשה באמצע תנגן פעמיים.
+    // במצב מסיבה גם ממתינים לה, כי המארח מכריז סיבוב רק אחרי שהמוזיקה יצאה.
+    const finish = async () => {
+      if (current !== me) return;
+      const p = autoStart().finally(() => { if (current === me) setPreparing(false); });
+      if (me.party) await p;
+    };
     setPreparing(true);
     // במצב מסיבה המסך שייך למשחק הקבוצתי, ורק המנוע מושאל
     if (!current.party) { show('s-play'); renderTurn(); }
@@ -1232,16 +1280,15 @@ const App = (() => {
         showWake(false);              // עוברים לקטע קצר, פאנל ההעֵרה כבר לא רלוונטי
         $('play-status').textContent = 'לא נמצא בספוטיפיי, נשתמש בקטע של 30 שניות';
         await preparePreview();
-        // הדגל נשאר דלוק עד שהנגינה האוטומטית הסתיימה, אחרת הקשה באמצע תנגן פעמיים
-        if (current === me) autoStart().finally(() => { if (current === me) setPreparing(false); });
+        await finish();
         return;
       }
       current.spStarted = false;
-      if (current === me) autoStart().finally(() => { if (current === me) setPreparing(false); });
+      await finish();
       return;
     }
     await preparePreview();
-    if (current === me) autoStart().finally(() => { if (current === me) setPreparing(false); });
+    await finish();
   }
 
   // ריפוי כתובת שפגה: רץ רק כשהנגן עצמו נכשל, במקום בדיקה מקדימה בכל סיבוב
@@ -1268,6 +1315,9 @@ const App = (() => {
       current.tried && current.tried.add(songKey(s));   // לא לחזור לשיר שבור באותו סיבוב
       const alt = choose(current.year, current.cat, { avoid: songKey(s), tried: current.tried });
       if (alt) { current = { ...current, ...alt, sp: null }; return preparePlayback(); }
+      // במסיבה אין קלפים ואין למה לחזור. הסיבוב מסומן ככושל והמארח מציע שיר אחר,
+      // במקום מסך שגיאה אדום שמדבר על סריקת קלף.
+      if (current.party) { current.dead = true; setPreparing(false); return; }
       setPreparing(false);
       return fail('לא הצלחתי לטעון אף שיר לקלף הזה. בדקו את החיבור ונסו קלף אחר.');
     }
@@ -1322,7 +1372,16 @@ const App = (() => {
     const fresh = await refreshPreview();
     if (current !== me) return;
     if (fresh) { audio.src = fresh; audio.load(); setPlayState('paused', 'שיר מוכן, לחצו לנגינה'); }
-    else { current.tried && current.tried.add(songKey(current.song)); anotherSong(false); }
+    else {
+      current.tried && current.tried.add(songKey(current.song));
+      // נפילת רשת מכשילה את כל שירי השנה באותה צורה. אחרי שלושה ניסיונות עוצרים
+      // ואומרים את האמת, במקום לשרוף את כל השנה בלולאה שאין לה סוף טבעי.
+      if (current.tried && current.tried.size >= 3) {
+        setPlayState('paused', 'אין חיבור לרשת. בדקו את הוויפיי ולחצו שוב.');
+        return;
+      }
+      anotherSong(false, current.tried);
+    }
   });
 
   async function togglePlay() {
@@ -1367,9 +1426,11 @@ const App = (() => {
       // שום תקלה רגעית לא זורקת את השחקן למסך שגיאה באמצע ערב. הקלף נשאר,
       // השיר נשאר, והלחיצה הבאה מנסה שוב. הפירוט נשמר למסך האבחון בלבד.
       lastPlayError = (e && (e.message || e.status)) || 'לא ידוע';
-      noteFullFail();
       setPlayState('paused', e && e.timeout ? 'הרשת איטית. לחצו שוב לנסות.'
                                             : 'משהו השתבש. לחצו שוב לנסות.');
+      // נספר רק כשספוטיפיי באמת היה מעורב, ואחרי ההודעה הכללית, כדי שההסבר
+      // על המעבר לקטעי 30 שניות יישאר על המסך ולא יימחק מיד
+      if (current && current.sp) noteFullFail();
     }
   }
 
@@ -1429,21 +1490,25 @@ const App = (() => {
       if (current !== me) return;
       if (e && e.wake) { noteFullFail(); return; }     // פאנל ההעֵרה כבר על המסך
       if (e && e.nodevice) { noteFullFail(); showWake(true); return; }
-      if (me.sp && e && e.timeout) noteFullFail();
       // נגינה אוטומטית שנכשלה חוזרת בשקט להתנהגות הישנה: לחיצה תנגן
       setPlayState('paused', e && e.timeout ? 'הרשת איטית. לחצו לנגינה.'
         : me.sp ? 'לחצו לנגינה' : 'שיר מוכן, לחצו לנגינה');
+      // אחרי ההודעה, כדי שההסבר על המעבר לקטעי 30 שניות יישאר הדבר האחרון על המסך
+      if (me.sp && e && e.timeout) noteFullFail();
     }
   }
 
   async function armDevice(fresh) {
     const me = current;
-    let list = [];
-    try { list = await sp.devices(fresh); } catch (e) {}
+    let list = [], devErr = null;
+    // שומרים את השגיאה. בלעדיה תקלת רשת או חיבור שפג נראים בדיוק כמו ספוטיפיי ישן,
+    // והמשחק שולח את המשפחה להעיר אפליקציה שלא תעזור להם.
+    try { list = await sp.devices(fresh); } catch (e) { devErr = e; }
     if (current !== me) return null;
     let dev = sp.pickDevice(list);
-    // אין מכשיר חיצוני: מנסים את הנגן המובנה של הדף, עם תקרת המתנה קצרה
-    if (!dev && sp.hasScope('streaming')) {
+    // אין מכשיר חיצוני: מנסים את הנגן המובנה של הדף, עם תקרת המתנה קצרה.
+    // נגן שכבר נכשל לצמיתות (אייפון) לא נבדק שוב, אחרת כל סיבוב ממתין שש שניות לשווא.
+    if (!dev && sp.hasScope('streaming') && !sdk.error()) {
       if (sdk.id()) dev = { id: sdk.id(), name: 'המשחק' };
       else {
         try { dev = { id: await withTimeout(sdk.ensure(), 6000), name: 'המשחק' }; }
@@ -1452,10 +1517,17 @@ const App = (() => {
       }
     }
     current.dev = dev ? dev.id : null;
-    showWake(!dev);
-    setPlayState('paused', dev
-      ? `רצועה מלאה מוכנה${dev.name ? ' (' + dev.name + ')' : ''}`
-      : 'ספוטיפיי ישן, העירו אותו פעם אחת');
+    if (dev) {
+      showWake(false);
+      setPlayState('paused', `רצועה מלאה מוכנה${dev.name ? ' (' + dev.name + ')' : ''}`);
+    } else if (devErr) {
+      showWake(false);
+      setPlayState('paused', devErr.timeout ? 'הרשת איטית. נסו שוב.'
+                                            : 'החיבור לספוטיפיי פג. התחברו מחדש בהגדרות.');
+    } else {
+      showWake(true);
+      setPlayState('paused', 'ספוטיפיי ישן, העירו אותו פעם אחת');
+    }
     return current.dev;
   }
 
@@ -1468,7 +1540,9 @@ const App = (() => {
     if (!current.dev) await armDevice();
     if (current !== me) throw stale();
     if (current.dev) {
-      try { await sp.play(uri, 0, current.dev); return; }
+      // נגינה שהצליחה מאפסת את מונה הכשלים, אחרת שתי תקלות רגעיות רחוקות זו מזו
+      // מכבות רצועות מלאות לשארית הערב
+      try { await sp.play(uri, 0, current.dev); fullFails = 0; return; }
       catch (e) { if (!gone(e)) throw e; }
     }
     if (current !== me) throw stale();
@@ -1479,6 +1553,7 @@ const App = (() => {
     if (current !== me) throw stale();
     if (!id) { const e = new Error('wake'); e.wake = true; throw e; }
     await sp.play(uri, 0, id);
+    fullFails = 0;
   }
 
   // אחרי שהמשתמש חזר מהעֵרת ספוטיפיי: מחכים שהמכשיר יופיע, עוצרים את שיר ההעֵרה.
@@ -1637,9 +1712,9 @@ const App = (() => {
 
   // ---------- שחקנים, תורות ושיפוט ----------
   // ציר הקלפים על השולחן נשאר הפוסק; האפליקציה רק אומרת של מי התור ורושמת צדק או פספס.
-  let players = JSON.parse(localStorage.getItem('players_v1') || '[]');
+  let players = readJSON('players_v1', []);
   let turnIdx = parseInt(localStorage.getItem('turn_idx') || '0', 10) || 0;
-  let nightLog = JSON.parse(localStorage.getItem('night_log_v1') || '[]');
+  let nightLog = readJSON('night_log_v1', []);
   const savePlayers = () => { localStorage.setItem('players_v1', JSON.stringify(players));
                               localStorage.setItem('turn_idx', String(turnIdx)); };
   const saveLog = () => localStorage.setItem('night_log_v1', JSON.stringify(nightLog));
@@ -1811,9 +1886,12 @@ const App = (() => {
   // בשקט ובלי הודעה שתסגיר את השנה.
   // fromGesture: הכפתור הוא מחוות לחיצה אמיתית; הקריאה ממאזין השגיאה של האודיו אינה,
   // ואסור לה להצית נגינה אוטומטית בסיבוב משוחזר שמעולם לא נגעו בו.
-  function anotherSong(fromGesture = true) {
+  // tried: השירים שכבר נכשלו טכנית בסיבוב הזה. בלעדיו הבורר מחזיר שוב ושוב
+  // שירים מאותה שנה שכבר נכשלו, וכשל רשת הופך ללולאה שמוחקת שנה שלמה.
+  function anotherSong(fromGesture = true, tried = null) {
     used.add(songKey(current.song)); persist();
-    const alt = choose(current.year, current.cat, { avoid: songKey(current.song) });
+    const alt = choose(current.year, current.cat,
+                       { avoid: songKey(current.song), tried: tried || (current && current.tried) });
     if (!alt) return;
     stopAudio(true);      // מנקה את המקור הישן, שלא ניתן יהיה להמשיך אותו בטעות
     if (fromGesture) primePlayback();   // אחרי הניקוי ועדיין בתוך המחווה
@@ -1986,16 +2064,26 @@ const App = (() => {
     pool: () => POOL,
     used, persist,
     gameMode: () => gameMode(),
-    fullMode: () => mode() === 'full' && sp.connected(),
+    // בלי !fullOff ההגרלה במסיבה ממשיכה להכניס שירים בלי קטע מוקדם, אחרי
+    // שהמנוע כבר ירד לקטעי 30 שניות ואינו יכול לנגן אותם
+    fullMode: () => mode() === 'full' && sp.connected() && !fullOff,
+    fxStop: () => fx.stop(),
     // מנגן שיר שרירותי מהמאגר. מחזיר הבטחה שנפתרת רק כשצליל באמת יצא,
     // כי מצב המסיבה מכריז על הסיבוב לטלפונים רק אחרי שהמוזיקה התחילה.
     async playSong(song, onState) {
-      current = { song, sp: null, tried: new Set(), auto: true, party: true };
+      // year ו-cat חייבים להיות כאן: בלעדיהם הבורר מחפש שנה undefined,
+      // ושיר בלי קטע מוקדם היה מפיל את המסיבה למסך שגיאה
+      current = { song, year: song.year, cat: song.cat || 'int',
+                  sp: null, tried: new Set(), auto: true, party: true };
       spPlaying = false;
       loopsLeft = LOOP_BUDGET;
-      partyState = onState || null;
+      partyHeard = false;
+      partyState = st => { if (st === 'playing') partyHeard = true; if (onState) onState(st); };
       await preparePlayback();
-      return !!(current && current.song === song);
+      // אירוע הנגינה נוחת רגע אחרי הפקודה. ממתינים לו עד שנייה וחצי,
+      // אחרת מוכרז סיבוב לשיר שאיש בשולחן לא שמע.
+      for (let i = 0; i < 15 && !partyHeard; i++) await new Promise(r => setTimeout(r, 100));
+      return !!(current && current.song === song && !current.dead && partyHeard);
     },
     stopSong: () => { stopAudio(true); current = null; partyState = null; },
     toggle: () => togglePlay(),
@@ -2003,6 +2091,7 @@ const App = (() => {
     refreshPreview: () => refreshPreview(),
   };
   let partyState = null;
+  let partyHeard = false;
 
   return { show, startScan, stopScan, manualGo, togglePlay, reveal, anotherSong,
            stopAudio, nextCard, resetNight, setMode, spConnect, spDisconnect, diagnose,

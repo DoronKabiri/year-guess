@@ -7,9 +7,19 @@
           LS_ME, LS_ROOM, LS_CFG, $, el, bdi, B } = P;
 
   const show = id => {
+    // אנימציית מסך הבית אינה נעצרת מכאן מעצמה, והמכשיר הזה מנגן, מאיר ומשמש לוח
+    // לכל הערב. קנבס מלא ב-60 פריימים לשנייה הוא חום וסוללה שאין להם קונה.
+    try { B().fxStop(); } catch (e) {}
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     const s = $(id);
     if (s) s.classList.add('active');
+  };
+  // טקסט לבן על צהוב או על מנטה אינו נקרא. שמונה צבעי המושבים כוללים ארבעה בהירים,
+  // ולכן צבע הכתב נגזר מהבהירות של הרקע ולא נקבע מראש.
+  const ink = c => {
+    const n = parseInt(String(c).slice(1), 16);
+    const lum = (((n >> 16) & 255) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114) / 1000;
+    return lum > 150 ? '#12081f' : '#fff';
   };
   const cfg = () => {
     try { return JSON.parse(localStorage.getItem(LS_CFG) || '{}'); } catch (e) { return {}; }
@@ -23,6 +33,9 @@
   const Host = (() => {
     let S = null;          // {code, seats:[], round, phase, song, target, solo}
     let seq = 0;
+    // דור המשחק. לולאת טעינת השיר רצה עם await, ויציאה באמצע חייבת לעצור אותה,
+    // אחרת שיר ממשיך להתנגן על מסך הבית בלי שום כפתור שיעצור אותו.
+    let alive = 0;
     const seats = () => S ? S.seats : [];
     const online = () => seats().filter(s => s.online);
 
@@ -30,7 +43,9 @@
       S = { code, seats: [], round: 0, phase: 'lobby', song: null,
             target: target(), solo: !!solo, winner: null, log: [] };
       seq = 0;
+      alive++;
     }
+    function kill() { alive++; S = null; }
     const save = () => { try { localStorage.setItem(LS_ROOM, JSON.stringify(S)); } catch (e) {} };
 
     // הפונקציה היחידה שבונה מצב יוצא. זהו המקום היחיד בקוד שבו שנה, שם שיר
@@ -317,6 +332,7 @@
 
     async function nextRound() {
       if (!S) return;
+      const gen = alive;
       S.round++;
       S.phase = 'listen';
       S.heard = false;
@@ -330,14 +346,28 @@
       for (let i = 0; i < 3 && !song; i++) {
         const c = draw(usedYears);
         if (!c) break;
-        const ok = await B().playSong(c, st => { if (st === 'playing') { S.heard = true; render(); } });
-        if (ok) song = c; else await new Promise(r => setTimeout(r, 200));
+        const ok = await B().playSong(c, st => { if (st === 'playing' && S) { S.heard = true; render(); } });
+        if (gen !== alive) return;
+        if (ok) song = c;
+        else { await new Promise(r => setTimeout(r, 200)); if (gen !== alive) return; }
       }
-      if (!song) { $('lg-count').textContent = 'לא הצלחתי לטעון שיר. נסו שוב.'; return; }
+      if (gen !== alive) return;
+      // כשל טעינה מנקה את השיר הקודם. בלי זה לחיצה על "נגן" הייתה מחזירה את השיר
+      // של הסיבוב הקודם, פותחת את כפתור החשיפה, וכל השולחן היה נשפט על שנה ישנה.
+      if (!song) {
+        S.song = null;
+        S.heard = false;
+        // סדר חשוב: render כותב מחדש את שורת הספירה, ולכן ההודעה נכתבת אחריו
+        render();
+        $('lg-count').textContent = 'לא הצלחתי לטעון שיר. אפשר לנסות שיר אחר.';
+        return;
+      }
+      if (gen !== alive) return;
       S.song = song;
       B().used.add(song.a + '::' + song.t); B().persist();
       // מכריזים רק אחרי שהמוזיקה באמת התחילה, אחרת שיר שיתחלף ישנה
       // את השנה מתחת לאנשים שכבר שיבצו
+      if (gen !== alive) return;
       Net.hostBroadcast({ v: 1, t: 'ROUND', round: S.round });
       push();
     }
@@ -359,7 +389,7 @@
       }
       const won = seats().filter(s => s.tl.length >= S.target);
       if (won.length === 1) { S.winner = won[0].pid; S.phase = 'done'; }
-      show(S.phase === 'done' ? 's-lg-reveal' : 's-lg-reveal');
+      show('s-lg-reveal');
       push();
       if (S.phase === 'done') setTimeout(() => { show('s-lg-win'); renderWin(); }, 4200);
     }
@@ -371,7 +401,7 @@
       Player.openLocalPlacement(s, idx => { s.place = idx; push(); });
     }
 
-    return { open, start, nextRound, reveal, renderBoard, soloReady, addSeat,
+    return { open, start, nextRound, reveal, renderBoard, soloReady, addSeat, kill,
              state: () => S, push, show: render, placeFor };
   })();
 
@@ -385,6 +415,9 @@
     let sel = null;
     let locked = false;
     let localMode = null;  // שיבוץ מקומי במצב מכשיר יחיד
+    // ניתוק מדווח פעמיים, מ-close ומ-error, וגם ההתחברות מחדש עצמה סוגרת את החיבור
+    // הישן ומדווחת שוב. בלי נעילה ומונה זה מאכיל את עצמו ומנסה בלי סוף.
+    let dropTimer = null, reconnecting = false, tries = 0;
 
     const store = () => {
       try { return JSON.parse(localStorage.getItem(LS_ME) || '{}'); } catch (e) { return {}; }
@@ -443,17 +476,34 @@
     }
 
     function dropped() {
+      if (!code || reconnecting) return;
       $('lg-drop').style.display = 'flex';
-      setTimeout(() => { if (code) reconnect(); }, 2000);
+      clearTimeout(dropTimer);
+      dropTimer = setTimeout(() => { if (code) reconnect(); }, 2000);
     }
     async function reconnect() {
+      if (reconnecting || !code) return;
+      reconnecting = true;
+      tries++;
       const prev = store()[code];
       try {
         await Net.joinRoom(code, { onMessage: onHost, onDrop: dropped });
         Net.playerSend({ v: 1, t: 'HELLO', code, name: prev ? prev.name : 'שחקן',
                          pid: prev ? prev.pid : null, secret: prev ? prev.secret : null });
+        tries = 0;
         $('lg-drop').style.display = 'none';
-      } catch (e) { setTimeout(reconnect, 2500); }
+      } catch (e) {
+        // אחרי חמישה ניסיונות אומרים את האמת במקום להמשיך להסתובב בשקט
+        if (tries >= 5) { $('lg-drop-msg').textContent = 'החדר נסגר'; }
+        else { clearTimeout(dropTimer); dropTimer = setTimeout(reconnect, 2500); }
+      } finally { reconnecting = false; }
+    }
+    // יציאה מסודרת: בלי זה כיסוי הניתוק נשאר על המסך ובולע כל הקשה
+    function kill() {
+      code = null; snap = null;
+      clearTimeout(dropTimer);
+      tries = 0;
+      $('lg-drop').style.display = 'none';
     }
 
     function onHost(msg) {
@@ -485,14 +535,18 @@
       if (snap.phase === 'listen') { renderPlace(); show('s-lg-place'); return; }
       if (snap.phase === 'reveal' || snap.phase === 'done') {
         show('s-lg-watch');
-        $('s-lg-watch').style.background = (me && me.colour) || '#2b0a4e';
+        const colour = (me && me.colour) || '#2b0a4e';
+        $('s-lg-watch').style.background = colour;
+        $('s-lg-watch').style.color = ink(colour);
         setTimeout(() => { if (snap && (snap.phase === 'reveal' || snap.phase === 'done')) renderResult(); }, 1500);
       }
     }
 
     function renderWait() {
       const c = $('lg-wait-circle');
-      c.style.background = (me && me.colour) || '#ff3d81';
+      const colour = (me && me.colour) || '#ff3d81';
+      c.style.background = colour;
+      c.style.color = ink(colour);
       c.textContent = (snap.me && snap.roster.find(r => r.pid === snap.me.pid) || {}).name || '';
       const box = $('lg-wait-others');
       box.innerHTML = '';
@@ -554,7 +608,15 @@
       $('lg-res-title').textContent = snap.song.t;
       $('lg-res-artist').textContent = snap.song.a;
       const left = snap.target - (snap.me ? snap.me.n : 0);
-      $('lg-res-left').textContent = left > 0 ? 'עוד ' + left + ' שירים לניצחון' : '';
+      // שיר אחד מניצחון הוא הרגע הגדול של המשחק, ו"עוד 1 שירים" הורס אותו
+      const lf = $('lg-res-left');
+      lf.textContent = '';
+      if (left === 1) lf.appendChild(document.createTextNode('עוד שיר אחד לניצחון'));
+      else if (left > 1) {
+        lf.appendChild(document.createTextNode('עוד '));
+        lf.appendChild(bdi(left));
+        lf.appendChild(document.createTextNode(' שירים לניצחון'));
+      }
       renderTimeline($('lg-res-tl'), (snap.me && snap.me.tl) || [], {});
       if (navigator.vibrate) navigator.vibrate(hit ? 80 : [40, 60, 40]);
     }
@@ -587,7 +649,7 @@
       paintLocal();
     }
 
-    return { joinScreen, go, openLocalPlacement, snap: () => snap };
+    return { joinScreen, go, openLocalPlacement, kill, snap: () => snap };
   })();
 
   // ============================================================
@@ -631,7 +693,24 @@
     next: () => Host.nextRound(),
     reveal: () => Host.reveal(),
     board: () => { Host.renderBoard(); show('s-lg-board'); },
-    backToGame: () => { const S = Host.state(); show(S && S.phase === 'reveal' ? 's-lg-reveal' : 's-lg-stage'); },
+    // חזרה למסך שממנו באמת אפשר להמשיך. אחרי ניצחון זה מסך המנצח, ולא הבמה
+    // שכפתור החשיפה שלה חסום ואין ממנה דרך לסיבוב נוסף.
+    backToGame: () => {
+      const S = Host.state();
+      if (!S) return window.App.show('s-home');
+      show(S.phase === 'done' ? 's-lg-win' : S.phase === 'reveal' ? 's-lg-reveal' : 's-lg-stage');
+      Host.show();
+    },
+    // הבמה הציעה לנסות שוב בלי לתת שום דרך לעשות זאת
+    retryRound: () => {
+      const S = Host.state();
+      if (S && S.phase === 'listen') { S.round--; Host.nextRound(); }
+    },
+    joinPrompt: () => {
+      const v = ($('lg-code-in').value || '').trim();
+      if (/^\d{4}$/.test(v)) joinByCode(v);
+      else { $('lg-code-in').style.display = ''; $('lg-code-in').focus(); }
+    },
     join: () => Player.go(),
     newCode: () => Host.open(false),
     addSoloSeat: () => { const n = prompt('שם השחקן'); if (n) { Host.addSeat(n); Host.show(); } },
@@ -639,8 +718,21 @@
       const S = Host.state();
       if (!S) return;
       const url = location.origin + location.pathname + '#j=' + S.code;
+      // בלי חלון שיתוף מקומי הכפתור לא עשה כלום. העתקה ללוח היא נחיתה רכה.
       if (navigator.share) navigator.share({ title: 'היטסטר רמיקס', url }).catch(() => {});
+      else if (navigator.clipboard) navigator.clipboard.writeText(url)
+        .then(() => { $('lg-net').textContent = 'הקישור הועתק'; }).catch(() => {});
     },
-    quit: () => { try { Net.close(); } catch (e) {} B().stopSong(); B().releaseWake(); window.App.show('s-home'); },
+    // יציאה שבאמת עוצרת: הודעת פרידה לטלפונים, סגירת החיבור, ביטול לולאת
+    // טעינת השיר שאולי רצה ברקע, וניקוי כיסוי הניתוק בטלפון
+    quit: () => {
+      try { if (Host.state()) Net.hostBroadcast({ v: 1, t: 'BYE' }); } catch (e) {}
+      try { Net.close(); } catch (e) {}
+      Host.kill();
+      Player.kill();
+      B().stopSong();
+      B().releaseWake();
+      window.App.show('s-home');
+    },
   };
 })();
