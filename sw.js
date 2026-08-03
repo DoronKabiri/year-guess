@@ -1,16 +1,20 @@
 // היטסטר רמיקס: מטמון מעטפת האפליקציה כדי שתעבוד גם בחיבור חלש
-const CACHE = 'remix-202608030110';
+const CACHE = 'remix-202608030617';
+// כתובות הסקריפטים נושאות חותמת. הדף מוגש קודם מהרשת אבל הסקריפטים מהמטמון,
+// ולכן בלי החותמת הפתיחה הראשונה אחרי כל פריסה מריצה סימון חדש מול קוד ישן.
 const SHELL = [
   './',
   './index.html',
-  './qr.js',
-  './party_core.js',
-  './party.js',
+  './qr.js?v=202608030430',
+  './party_core.js?v=202608030430',
+  './party.js?v=202608030430',
   './manifest.webmanifest',
   './data/cards.json',
   './data/pool.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './icons/apple-touch-icon.png',
+  './icons/maskable-512.png',
   'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js',
   'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js',
 ];
@@ -77,6 +81,6 @@ self.addEventListener('fetch', e => {
         caches.open(CACHE).then(c => c.put(e.request, copy));
       }
       return res;
-    }).catch(() => hit))
+    }).catch(() => caches.match(e.request)))
   );
 });

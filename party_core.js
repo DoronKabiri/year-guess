@@ -44,8 +44,15 @@ const Party = (() => {
     async function hostOpen(code, h) {
       await loadLib();
       role = 'host';
+      // עמית קודם עדיין מחזיק את מזהה החדר אצל המתווך, והחדש נכשל ב-unavailable-id
+      // על חדר שבעצם פתוח. אותו נימוק כמו ב-joinRoom.
+      try { if (peer) peer.destroy(); } catch (e) {}
+      peer = null;
       return new Promise((res, rej) => {
         peer = new Peer(idFor(code), { debug: 0 });
+        // PeerJS אינו מקים מחדש את שקע האיתות מעצמו. החיבורים הקיימים שורדים,
+        // ולכן דבר לא נראה שבור, אבל אף טלפון חדש אינו יכול להצטרף יותר.
+        peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) {} });
         const timer = setTimeout(() => rej(new Error('open timeout')), 15000);
         peer.on('open', () => { clearTimeout(timer); res(); });
         peer.on('error', e => {
@@ -74,6 +81,8 @@ const Party = (() => {
       peer = null; hostConn = null;
       return new Promise((res, rej) => {
         peer = new Peer({ debug: 0 });
+        // אותו נימוק כמו אצל המארח: בלי חיבור מחדש טלפון שגמגם נעול לשארית הערב
+        peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) {} });
         const timer = setTimeout(() => rej(new Error('join timeout')), 15000);
         peer.on('open', () => {
           hostConn = peer.connect(idFor(code), { reliable: true });
@@ -128,12 +137,17 @@ const Party = (() => {
   function renderTimeline(box, tl, opts = {}) {
     const { onGap = null, chosen = null, locked = false, justAdded = null } = opts;
     const sz = sizes(tl.length);
+    // ניקוי התוכן מאפס את גובה הגלילה והדפדפן מצמיד את המיקום לראש. הרכיב נבנה
+    // מחדש בכל תמונת מצב, ולכן בלי זה כל אישור של שחקן אחר קופץ לכולם למעלה.
+    const sc = box.closest('.body');
+    const top = sc ? sc.scrollTop : 0;
     box.innerHTML = '';
     if (onGap && !tl.length) {
       const b = el('button', 'lg-first', 'השיר הראשון שלי');
       b.onclick = () => onGap(0);
       if (chosen === 0) b.classList.add('sel');
       box.appendChild(b);
+      if (sc) sc.scrollTop = top;
       return;
     }
     box.appendChild(el('div', 'lg-edge', 'למעלה: ישן יותר'));
@@ -161,6 +175,7 @@ const Party = (() => {
       addGap(i + 1);
     });
     box.appendChild(el('div', 'lg-edge', 'למטה: חדש יותר'));
+    if (sc) sc.scrollTop = top;
   }
 
   // ============================================================

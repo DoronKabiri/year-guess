@@ -36,17 +36,74 @@
     // דור המשחק. לולאת טעינת השיר רצה עם await, ויציאה באמצע חייבת לעצור אותה,
     // אחרת שיר ממשיך להתנגן על מסך הבית בלי שום כפתור שיעצור אותו.
     let alive = 0;
+    // סיבוב אחד בכל רגע. "השיר הבא", "מתחילים" ו"שיר אחר" כולם קוראים ל-nextRound,
+    // ושתי לולאות במקביל גונבות זו לזו את הנגינה ורושמות שיר אחר מזה שהשולחן שמע.
+    let busy = false;
+    // מסך המנצח נקבע בהשהיה. בלי הידית הזאת הוא נוחת גם על סיבוב חדש שנפתח בינתיים.
+    let winTimer = null;
+    // שחזור אחד בכל רגע. הוא מריץ טעינת מאגר והקמת חדר, ושתי כניסות פותחות
+    // שני עמיתים על אותו קוד ומפילות את החדר שכבר עלה.
+    let resuming = false;
+    // החדר לא נפתח מחדש בשחזור. הלוח והמוזיקה ממשיכים, אבל הטלפונים לא יחזרו,
+    // וזה חייב להיאמר על הבמה, המסך היחיד שהשחזור באמת מציג.
+    let noRoom = false;
     const seats = () => S ? S.seats : [];
     const online = () => seats().filter(s => s.online);
 
     function fresh(code, solo) {
+      clearTimeout(winTimer); winTimer = null;
       S = { code, seats: [], round: 0, phase: 'lobby', song: null,
             target: target(), solo: !!solo, winner: null, log: [] };
       seq = 0;
+      noRoom = false;
       alive++;
     }
-    function kill() { alive++; S = null; }
-    const save = () => { try { localStorage.setItem(LS_ROOM, JSON.stringify(S)); } catch (e) {} };
+    function kill() {
+      clearTimeout(winTimer); winTimer = null;
+      alive++; S = null;
+      // משחק שהסתיים בכוונה אינו ממתין לשחזור בפתיחה הבאה
+      try { localStorage.removeItem(LS_ROOM); } catch (e) {}
+    }
+    // טקסט בלבד, בלי למחוק את האייקון שיושב בתוך הכפתור
+    const btnLabel = (b, txt) => {
+      if (!b) return;
+      const t = [...b.childNodes].find(n => n.nodeType === 3);
+      if (t) t.textContent = txt; else b.appendChild(document.createTextNode(txt));
+    };
+    const lockButtons = on => {
+      const n = $('lg-next-btn'); if (n) n.disabled = on;
+      if (on) $('lg-reveal-btn').disabled = true;
+    };
+    // קישור העֵרה על הבמה: נוצר פעם אחת ומוסתר. הכפתור הירוק המקורי יושב במסך
+    // הנגינה של משחק הקלפים, שאינו מוצג כלל במסיבה.
+    function wakeLink(on) {
+      let a = $('lg-wake');
+      if (!a) {
+        if (!on) return;
+        a = el('a', 'big green');
+        a.id = 'lg-wake';
+        a.target = '_blank'; a.rel = 'noopener';
+        a.style.cssText = 'display:none;text-decoration:none;padding:14px 10px;margin-top:10px';
+        a.textContent = 'להעיר את ספוטיפיי';
+        const st = $('s-lg-stage');
+        (st.querySelector('.body') || st).appendChild(a);
+      }
+      try { a.href = B().wakeUrl(); } catch (e) {}
+      a.style.display = on ? 'block' : 'none';
+    }
+    // חותמת זמן: מכשיר המארח נסגר על ידי המערכת באמצע ערב, והשחזור צריך לדעת
+    // אם התמונה שלפניו היא מהמסיבה הזאת או משבוע שעבר
+    const save = () => { try { localStorage.setItem(LS_ROOM, JSON.stringify({ ...S, t: Date.now() })); } catch (e) {} };
+    const RESUME_TTL = 3 * 60 * 60 * 1000;
+    function savedRoom() {
+      try {
+        const d = JSON.parse(localStorage.getItem(LS_ROOM) || 'null');
+        // משחק שנגמר אינו ממתין לשחזור. רוב הערבים נסגרים בלי "סיום", והתמונה
+        // הזאת חטפה כל פתיחה במשך שלוש שעות והציעה להמשיך משחק שכבר הוכרע.
+        if (d && d.round > 0 && d.phase !== 'done' && d.t && Date.now() - d.t < RESUME_TTL) return d;
+      } catch (e) {}
+      return null;
+    }
 
     // הפונקציה היחידה שבונה מצב יוצא. זהו המקום היחיד בקוד שבו שנה, שם שיר
     // או אמן יכולים להיכנס לחוט, ולכן דליפת תשובה היא נקודת כשל אחת ולא פזורה.
@@ -60,8 +117,10 @@
                                     placed: s.place !== null && s.place !== undefined, online: s.online })),
         winner: S.winner,
       };
+      // מי שלא שיבץ בסיבוב הזה אינו מקבל פסק דין. מושב חדש נולד עם hit=false,
+      // ומצטרף באמצע חשיפה היה מקבל ✗ ענק על סיבוב שלא השתתף בו.
       if (me) snap.me = { pid: me.pid, tl: me.tl, place: me.place, n: me.tl.length, bulls: me.bulls,
-                          hit: reveal ? me.hit : undefined };
+                          hit: reveal && me.place !== null && me.place !== undefined ? me.hit : undefined };
       // בזמן האזנה שדות השיר פשוט אינם קיימים על האובייקט, במקום להיות ריקים
       if (reveal && S.song) snap.song = { year: S.song.year, t: S.song.t, a: S.song.a };
       return snap;
@@ -101,24 +160,49 @@
     }
 
     function renderStage() {
-      $('lg-round').textContent = 'סיבוב ' + S.round;
+      // הקוד והריבוע חיים רק במסך הלובי, שלא חוזר יותר. טלפון שנפל צריך מאיפה
+      // להקריא את הקוד בחזרה, ובלי זה אין שום דרך להחזיר אותו למשחק.
+      $('lg-round').textContent = 'סיבוב ' + S.round + '  ·  קוד ' + S.code;
       const box = $('lg-tiles');
       box.innerHTML = '';
       for (const s of seats()) {
-        const t = el('div', 'lg-tile' + (s.place !== null && s.place !== undefined ? ' done' : ''));
+        const placed = s.place !== null && s.place !== undefined;
+        const t = el('div', 'lg-tile' + (placed ? ' done' : ''));
         t.style.borderColor = s.colour;
         if (!s.online) t.classList.add('off');
         t.appendChild(el('div', 'lg-tile-n', s.name));
         t.appendChild(el('div', 'lg-tile-c', String(s.tl.length)));
-        t.appendChild(el('div', 'lg-tile-s', (s.place !== null && s.place !== undefined) ? 'בחר' : '...'));
+        t.appendChild(el('div', 'lg-tile-s',
+          placed ? '✓ בפנים' : ((S.solo || !s.key) ? 'הקישו לשיבוץ' : '...')));
+        // מכשיר יחיד: הכניסה היחידה לשיבוץ הייתה קבורה במסך הטבלה, ומשפחה
+        // שלחצה "חשוף עכשיו" קיבלה ✗ לכולם וציר זמן שלעולם לא גדל.
+        // מושב בלי טלפון בחדר מרושת הוא אותו מקרה בדיוק, והוא נספר בין המחוברים.
+        if ((S.solo || !s.key) && !placed) {
+          t.onclick = () => placeFor(s.pid); t.style.cursor = 'pointer';
+          t.setAttribute('role', 'button'); t.tabIndex = 0; t.classList.add('tap');
+        }
         box.appendChild(t);
       }
+      const tag = $('lg-stage-tag');
+      if (tag) tag.textContent = noRoom
+        ? 'החדר לא נפתח מחדש. הטלפונים לא יתחברו. סיימו ופתחו חדר חדש.'
+        : S.solo
+          ? 'מעבירים את הטלפון. כל אחד ואחת בתורם מקישים על השם שלהם ומשבצים.'
+          : 'האזינו. כל אחד משבץ בטלפון שלו, בסתר.';
       const ready = online().filter(s => s.place !== null && s.place !== undefined).length;
       const tot = online().length;
       const c = $('lg-count');
-      c.textContent = ready >= tot && tot ? 'כולם בחרו' : `${ready} מתוך ${tot} בחרו`;
-      c.classList.toggle('full', ready >= tot && tot > 0);
-      $('lg-reveal-btn').disabled = !S.heard;
+      // בלי אף מחובר "0 מתוך 0 בחרו" נקרא כתקלת ספירה במקום כמצב חיבור.
+      // מגיעים לכאן מיד אחרי שחזור, שבו כל המושבים מסומנים מנותקים.
+      c.textContent = !tot ? 'אף טלפון לא מחובר כרגע'
+        : (ready >= tot ? 'כולם בחרו' : `${ready} מתוך ${tot} בחרו`);
+      c.classList.toggle('full', tot > 0 && ready >= tot);
+      // שורת המצב שורדת ציור מחדש: render נקרא על כל הודעת רשת, ובלי זה
+      // ההסבר על מה שקורה בנגינה נמחק ברגע שטלפון כלשהו משבץ
+      const nt = $('lg-note'); if (nt) nt.textContent = S.note || '';
+      // בלי S.song הכפתור מוביל לחשיפה שתקרוס על שנה חסרה ותציג את הסיבוב הקודם
+      $('lg-reveal-btn').disabled = busy || !S.heard || !S.song;
+      btnLabel($('lg-reveal-btn'), (S.heard || S.song) ? 'חשוף עכשיו' : 'רגע, השיר נטען');
     }
 
     // חשיפה על מסך המארח בלבד. הטלפונים ריקים בכוונה, כדי ששישה ראשים
@@ -137,7 +221,7 @@
         t.appendChild(el('div', 'lg-tile-n', s.name));
         const g = el('div', 'lg-rv-gap');
         g.appendChild(labelToNode(s.place === null || s.place === undefined
-          ? 'לא בחר' : gapLabel(s.tlBefore, s.place)));
+          ? 'בלי שיבוץ' : gapLabel(s.tlBefore, s.place)));
         t.appendChild(g);
         t.appendChild(el('div', 'lg-rv-mark', s.hit ? '✓' : '✗'));
         if (s.hit && s.bull) t.appendChild(el('div', 'lg-bull', 'בול'));
@@ -218,8 +302,11 @@
         const cnt = el('div', 'lg-board-n'); cnt.appendChild(bdi(s.tl.length + '/' + S.target));
         row.appendChild(cnt);
         const act = el('button', 'small');
-        act.textContent = 'מקמו בשבילו';
+        act.textContent = 'שיבוץ עבור ' + s.name;
         act.onclick = () => placeFor(s.pid);
+        // הטבלה נפתחת גם מהחשיפה, ושם placeFor חוזר בשקט. כפתור שלא מגיב כלל
+        // נראה בדיוק כמו אפליקציה תקועה, ולכן הוא מאפיר.
+        act.disabled = !S || S.phase !== 'listen';
         row.appendChild(act);
         box.appendChild(row);
       }
@@ -263,6 +350,55 @@
         $('lg-url').textContent = url.replace(/^https?:\/\//, '');
       } catch (e) { $('lg-qr-wrap').style.display = 'none'; }
       $('lg-code').textContent = code;
+    }
+
+    // שחזור מסיבה שנקטעה: הטלפון של המארח הוא הרמקול, הלוח ומרכזיית החיבורים,
+    // ו-iOS סוגר לו את הלשונית אחרי שיחה או מעבר לספוטיפיי. בלי זה כל צירי הזמן
+    // והניקוד נמחקים בזמן שתמונת מצב שלמה יושבת באחסון בלי שאיש קורא אותה.
+    // הטלפונים חוזרים מעצמם: HELLO עם המזהה והסוד מחזיר לכל אחד את המושב שלו.
+    async function resume() {
+      if (resuming) return false;
+      const d = savedRoom();
+      if (!d) return false;
+      resuming = true;
+      // חייב לרוץ בתוך מחוות הלחיצה עצמה, לפני כל המתנה, אחרת הדפדפן באייפון
+      // כבר אינו סופר את זה כמחווה והצליל נשאר חסום לשארית הערב
+      B().primePlayback();
+      B().keepAwake();
+      try {
+        delete d.t;
+        S = d;
+        noRoom = false;
+        for (const s of seats()) { s.online = false; s.key = null; }
+        alive++;
+        if (!await B().loadData()) return false;
+        if (!S.solo) {
+          try {
+            await Net.hostOpen(S.code, {
+              onMessage: (key, msg, conn) => onPlayer(key, msg, conn),
+              onDrop: key => { const s = seats().find(x => x.key === key); if (s) { s.online = false; s.key = null; push(); } },
+            });
+            drawQR(S.code);
+          } catch (e) {
+            // בלי חדר הטלפונים לא יחזרו, אבל הלוח, הניקוד והמוזיקה כן
+            noRoom = true;
+          }
+        }
+        // סיבוב האזנה משוחזר נושא heard ושיר של שיר שאיש לא שמע: המנוע ריק,
+        // כפתור הנגינה מת וכפתור החשיפה היה שופט את השולחן על שקט. מנגנים מחדש.
+        if (S.phase === 'listen') {
+          S.song = null;
+          S.heard = false;
+          show('s-lg-stage');
+          B().keepAwake();   // רק עכשיו מסך מסיבה פעיל, ולפני כן הנעילה נדחתה
+          await nextRound();
+          return true;
+        }
+        show(S.phase === 'done' ? 's-lg-win' : 's-lg-reveal');
+        render();
+        B().keepAwake();
+        return true;
+      } finally { resuming = false; }
     }
 
     async function soloReady() {
@@ -324,29 +460,73 @@
     }
 
     async function start() {
+      // "מתחילים" ו"משחק חדש" שניהם מגיעים לכאן, ובלי שומר עומס הקשה כפולה
+      // בזמן טעינת השיר מאפסת את מונה הסיבובים אחרי שהלולאה כבר קידמה אותו
+      if (busy) return;
       if (!seats().length) return;
+      // הכפתור הזה מוחק את ציר הזמן של כולם, וקודם הוא הבטיח "עוד סיבוב"
+      if (S && S.round > 0 && !confirm('להתחיל משחק חדש? ציר הזמן של כולם יימחק.')) return;
       for (const s of seats()) { s.tl = []; s.bulls = 0; }
       S.round = 0; S.winner = null;
+      // nextRound מסרב לרוץ כשהמשחק גמור, ומסך המנצח הוא בדיוק המקום שממנו
+      // מתחילים משחק חדש
+      S.phase = 'listen';
       nextRound();
     }
 
     async function nextRound() {
       if (!S) return;
+      // חלון הרפאים: מסך המנצח עוד לא עלה, וכפתור "השיר הבא" עדיין על המסך.
+      // סיבוב נוסף כאן מנגן מוזיקה מתחת למסך מנצח שנוחת עליו כעבור רגע.
+      if (S.phase === 'done') return;
+      if (busy) return;
+      clearTimeout(winTimer); winTimer = null;
+      busy = true;
+      lockButtons(true);
+      try {
       const gen = alive;
       S.round++;
       S.phase = 'listen';
       S.heard = false;
+      S.song = null;
       for (const s of seats()) { s.place = null; s.hit = false; s.bull = false; s.near = false; }
       show('s-lg-stage');
-      $('lg-count').textContent = 'טוען שיר...';
+      // סדר חשוב: renderStage כותב מחדש את שורת הספירה, ולכן הודעת הטעינה
+      // נכתבת אחריו. אחרת השולחן רואה "0 מתוך 4 בחרו" ושקט, בכל סיבוב.
       render();
+      wakeLink(false);
+      $('lg-count').textContent = 'טוען שיר...';
+      S.note = ''; { const n0 = $('lg-note'); if (n0) n0.textContent = ''; }
       const lead = [...seats()].sort((a, b) => b.tl.length - a.tl.length)[0];
       const usedYears = lead ? lead.tl.map(x => x.y) : [];
       let song = null;
       for (let i = 0; i < 3 && !song; i++) {
         const c = draw(usedYears);
         if (!c) break;
-        const ok = await B().playSong(c, st => { if (st === 'playing' && S) { S.heard = true; render(); } });
+        const ok = await B().playSong(c, (st, msg) => {
+          if (!S) return;
+          if (st === 'playing') {
+            S.heard = true; S.note = ''; wakeLink(false); render();
+            const n = $('lg-note'); if (n) n.textContent = '';
+            return;
+          }
+          // הבמה היא המסך היחיד שרואים כאן. בלי זה ההודעה שהייתה פותרת את
+          // הערב, ובראשה "ספוטיפיי ישן", נכתבת למסך שאינו מוצג.
+          if (S.phase !== 'listen') return;
+          // הכפתור היחיד שפותר את הערב אינו נמחק על ידי כל הודעת מצב שבאה
+          // אחריו. הוא נעלם כשהסיבוב באמת ממשיך.
+          if (st === 'wake') wakeLink(true);
+          else if (st === 'loading') wakeLink(false);
+          if (msg === undefined) return;
+          // ערוץ חדש אל המסך שלפני החשיפה, ולכן עובר באותה רשת ביטחון
+          // כמו כל טקסט אחר שם (שם מכשיר בספוטיפיי יכול להכיל מספר שנה)
+          const txt = B().stripYears(msg);
+          S.note = txt;
+          // שורת הספירה נלקחת רק כל עוד אין שיר. משהוכרז הסיבוב היא שייכת למונה
+          // המשבצים, וההודעות ממשיכות לשורת המצב הנפרדת.
+          if (!S.song) $('lg-count').textContent = txt;
+          const n = $('lg-note'); if (n) n.textContent = txt;
+        });
         if (gen !== alive) return;
         if (ok) song = c;
         else { await new Promise(r => setTimeout(r, 200)); if (gen !== alive) return; }
@@ -357,8 +537,12 @@
       if (!song) {
         S.song = null;
         S.heard = false;
-        // סדר חשוב: render כותב מחדש את שורת הספירה, ולכן ההודעה נכתבת אחריו
+        // ניתוק המנוע: בלי זה מאזין השגיאה של האודיו עדיין יכול להגיע לאירוע
+        // נגינה אמיתי, להדליק את כפתור החשיפה ולחשוף את השנה של הסיבוב הקודם
+        B().stopSong();
+        B().keepAwake();   // stopSong משחרר את נעילת המסך, והבמה עדיין פתוחה
         render();
+        btnLabel($('lg-reveal-btn'), 'חשוף עכשיו');
         $('lg-count').textContent = 'לא הצלחתי לטעון שיר. אפשר לנסות שיר אחר.';
         return;
       }
@@ -370,10 +554,18 @@
       if (gen !== alive) return;
       Net.hostBroadcast({ v: 1, t: 'ROUND', round: S.round });
       push();
+      } finally {
+        busy = false;
+        const n = $('lg-next-btn'); if (n && !(S && S.phase === 'done')) n.disabled = false;
+        if (S) $('lg-reveal-btn').disabled = !S.heard || !S.song;
+      }
     }
 
     function reveal() {
       if (!S || S.phase !== 'listen') return;
+      // בלי שיר אין שנה. חשיפה כאן הייתה זורקת חריגה באמצע הציור ומשאירה
+      // על המסך את השנה והתוצאות של הסיבוב הקודם כאילו הן של הסיבוב הזה.
+      if (!S.song) return;
       S.phase = 'reveal';
       for (const s of seats()) {
         s.tlBefore = [...s.tl];
@@ -387,11 +579,22 @@
                             (hi !== null && Math.abs(S.song.year - hi) <= 1));
         if (s.hit) { s.tl = insertAt(s.tl, S.song); if (s.bull) s.bulls++; }
       }
+      // בלי תורות כל מי שצדק מרוויח שיר באותו סיבוב, ולכן שניים שחוצים יחד את היעד
+      // הם הסיום הרגיל ולא מקרה קצה. שובר שוויון: יותר שירים, ואז יותר בולים.
       const won = seats().filter(s => s.tl.length >= S.target);
-      if (won.length === 1) { S.winner = won[0].pid; S.phase = 'done'; }
+      if (won.length) {
+        const w = [...won].sort((a, b) => b.tl.length - a.tl.length || b.bulls - a.bulls)[0];
+        S.winner = w.pid;
+        S.phase = 'done';
+        // ארבע שניות שבהן כולם דוקרים את הכפתור הגדול, בדיוק ברגע הניצחון
+        const nb = $('lg-next-btn'); if (nb) nb.disabled = true;
+      }
       show('s-lg-reveal');
+      // ציור מפורש: בסיבוב המנצח השלב כבר 'done', ו-render היה שולח את המסך
+      // הזה ל-renderWin ומשאיר על המסך את השנה והתוצאות של הסיבוב הקודם
+      renderReveal();
       push();
-      if (S.phase === 'done') setTimeout(() => { show('s-lg-win'); renderWin(); }, 4200);
+      if (S.phase === 'done') winTimer = setTimeout(() => { show('s-lg-win'); renderWin(); }, 4200);
     }
 
     // שיבוץ ידני בשביל טלפון שמת: אף כשל מכשיר לא עוצר את השולחן
@@ -401,8 +604,8 @@
       Player.openLocalPlacement(s, idx => { s.place = idx; push(); });
     }
 
-    return { open, start, nextRound, reveal, renderBoard, soloReady, addSeat, kill,
-             state: () => S, push, show: render, placeFor };
+    return { open, start, nextRound, reveal, renderBoard, soloReady, addSeat, kill, resume, savedRoom,
+             state: () => S, busy: () => busy, push, show: render, placeFor };
   })();
 
   // ============================================================
@@ -414,7 +617,16 @@
     let code = null;
     let sel = null;
     let locked = false;
+    // הסיבוב שהמסך הזה מצייר. הודעת ROUND מגיעה רק לחיבורים שהיו פתוחים באותו רגע,
+    // וטלפון שנרדם וחזר היה מציג "נעלת" על שיבוץ שהמארח כבר דחה.
+    let lastRound = null;
     let localMode = null;  // שיבוץ מקומי במצב מכשיר יחיד
+    // הצטרפות אחת בכל רגע. joinRoom הורס את העמית הקודם, ושתי הקשות בתוך חלון
+    // החיבור מייצרות שני HELLO בלי מזהה, ומכאן מושב רפאים שנספר לנצח.
+    let joining = false;
+    // הסיבוב שכבר עבר את מעבר החשיפה במסך הזה. המארח משדר שוב באמצע החשיפה
+    // על כל אירוע רשת, וכל שידור כזה זרק את כולם חזרה למסך ההמתנה.
+    let shown = null;
     // ניתוק מדווח פעמיים, מ-close ומ-error, וגם ההתחברות מחדש עצמה סוגרת את החיבור
     // הישן ומדווחת שוב. בלי נעילה ומונה זה מאכיל את עצמו ומנסה בלי סוף.
     let dropTimer = null, reconnecting = false, tries = 0;
@@ -458,21 +670,33 @@
     }
 
     async function go() {
-      const name = ($('lg-name').value || '').trim().slice(0, 16);
-      if (!name) { $('lg-join-err').textContent = 'צריך שם'; return; }
-      const born = $('lg-years').dataset.born ? Number($('lg-years').dataset.born) : null;
-      $('lg-join-err').textContent = 'מתחבר...';
-      const prev = store()[code];
+      if (joining) return;
+      joining = true;
+      const jb = $('lg-join-btn'); if (jb) jb.disabled = true;
       try {
-        await Net.joinRoom(code, { onMessage: onHost, onDrop: dropped });
-      } catch (e) {
-        $('lg-join-err').textContent = e && e.missing
-          ? 'לא נמצא חדר עם הקוד הזה' : 'החיבור נכשל. בדקו שאתם על אותה רשת.';
-        return;
+        const name = ($('lg-name').value || '').trim().slice(0, 16);
+        const errBox = $('lg-join-err');
+        if (!name) { errBox.className = 'err'; errBox.textContent = 'צריך שם'; return; }
+        const born = $('lg-years').dataset.born ? Number($('lg-years').dataset.born) : null;
+        // חיבור יכול לקחת חמש עשרה שניות, והודעת התקדמות בצבע שגיאה הזמינה
+        // בדיוק את ההקשה השנייה שמייצרת את מושב הרפאים
+        errBox.className = 'tag'; errBox.textContent = 'מתחברים...';
+        const prev = store()[code];
+        try {
+          await Net.joinRoom(code, { onMessage: onHost, onDrop: dropped });
+        } catch (e) {
+          errBox.className = 'err';
+          errBox.textContent = e && e.missing
+            ? 'לא נמצא חדר עם הקוד הזה' : 'החיבור נכשל. בדקו שאתם על אותה רשת.';
+          return;
+        }
+        Net.playerSend({ v: 1, t: 'HELLO', code, name, born,
+                         pid: prev ? prev.pid : null, secret: prev ? prev.secret : null });
+        errBox.textContent = '';
+      } finally {
+        joining = false;
+        if (jb) jb.disabled = false;
       }
-      Net.playerSend({ v: 1, t: 'HELLO', code, name, born,
-                       pid: prev ? prev.pid : null, secret: prev ? prev.secret : null });
-      $('lg-join-err').textContent = '';
     }
 
     function dropped() {
@@ -491,16 +715,35 @@
         Net.playerSend({ v: 1, t: 'HELLO', code, name: prev ? prev.name : 'שחקן',
                          pid: prev ? prev.pid : null, secret: prev ? prev.secret : null });
         tries = 0;
+        const rb = $('lg-drop-retry'); if (rb) rb.style.display = 'none';
         $('lg-drop').style.display = 'none';
       } catch (e) {
-        // אחרי חמישה ניסיונות אומרים את האמת במקום להמשיך להסתובב בשקט
-        if (tries >= 5) { $('lg-drop-msg').textContent = 'החדר נסגר'; }
+        // אחרי חמישה ניסיונות עוצרים, אבל החדר פתוח והמושב עם ציר הזמן שמור
+        // אצל המארח. "החדר נסגר" היה שקר שנועל את הטלפון מאחורי כיסוי בלי מוצא.
+        if (tries >= 5) {
+          $('lg-drop-msg').textContent = 'איבדנו את החיבור. בדקו את הוויפיי.';
+          let rb = $('lg-drop-retry');
+          if (!rb) {
+            rb = el('button', 'small');
+            rb.id = 'lg-drop-retry';
+            rb.textContent = 'לנסות שוב';
+            rb.onclick = () => {
+              tries = 0;
+              $('lg-drop-msg').textContent = 'מתחבר מחדש...';
+              rb.style.display = 'none';
+              reconnect();
+            };
+            $('lg-drop').firstElementChild.appendChild(rb);
+          }
+          rb.style.display = '';
+        }
         else { clearTimeout(dropTimer); dropTimer = setTimeout(reconnect, 2500); }
       } finally { reconnecting = false; }
     }
     // יציאה מסודרת: בלי זה כיסוי הניתוק נשאר על המסך ובולע כל הקשה
     function kill() {
       code = null; snap = null;
+      sel = null; locked = false; lastRound = null; shown = null; me = null;
       clearTimeout(dropTimer);
       tries = 0;
       $('lg-drop').style.display = 'none';
@@ -531,14 +774,22 @@
 
     function paint() {
       if (!snap) return;
+      // התמונה היא האמת. סיבוב חדש מאפס את הבחירה המקומית גם כשהודעת ROUND
+      // לא הגיעה, אחרת המסך מבטיח שיבוץ שאינו קיים אצל המארח.
+      if (snap.round !== lastRound) { lastRound = snap.round; sel = null; locked = false; }
       if (snap.phase === 'lobby') { renderWait(); show('s-lg-wait'); return; }
       if (snap.phase === 'listen') { renderPlace(); show('s-lg-place'); return; }
       if (snap.phase === 'reveal' || snap.phase === 'done') {
-        show('s-lg-watch');
-        const colour = (me && me.colour) || '#2b0a4e';
-        $('s-lg-watch').style.background = colour;
-        $('s-lg-watch').style.color = ink(colour);
-        setTimeout(() => { if (snap && (snap.phase === 'reveal' || snap.phase === 'done')) renderResult(); }, 1500);
+        // מעבר אחד לכל סיבוב. תמונת מצב נוספת באמצע החשיפה, למשל כשטלפון אחד
+        // הונח על הפנים, החזירה את כל השאר למסך ההמתנה והרטיטה אותם מחדש.
+        if (shown !== snap.round) {
+          shown = snap.round;
+          show('s-lg-watch');
+          const colour = (me && me.colour) || '#2b0a4e';
+          $('s-lg-watch').style.background = colour;
+          $('s-lg-watch').style.color = ink(colour);
+          setTimeout(() => { if (snap && (snap.phase === 'reveal' || snap.phase === 'done')) renderResult(); }, 1500);
+        } else if (snap.song) renderResult();
       }
     }
 
@@ -558,6 +809,10 @@
     }
 
     function renderPlace() {
+      // הביטול שייך רק לשיבוץ מקומי על מכשיר המארח. לשחקן מרוחק זה המסך שלו,
+      // ובלי יציאה משלו אין לו שום כפתור אם המארח נעלם בלי שהחיבור נסגר.
+      const cb = $('lg-place-cancel'); if (cb) cb.style.display = 'none';
+      const qb = $('lg-place-quit'); if (qb) qb.style.display = '';
       const tl = (snap.me && snap.me.tl) || [];
       if (snap.me && snap.me.place !== null && snap.me.place !== undefined && sel === null) {
         sel = snap.me.place; locked = true;
@@ -585,7 +840,9 @@
         btn.disabled = false;
         // עטיפה ב-span אחד: הכפתור הוא flex, ורווחים בין פריטי flex נבלעים
         const wrap = el('span');
-        if (tl.length) wrap.appendChild(document.createTextNode('לשים '));
+        // בסיבוב הראשון ציר הזמן ריק, וגם הרווח היחיד וגם כפתור האישור נשאו
+        // בדיוק את אותה כותרת ורודה. הפועל מבדיל ביניהם.
+        wrap.appendChild(document.createTextNode(tl.length ? 'לשים ' : 'מאשרים: '));
         wrap.appendChild(labelToNode(gapLabel(tl, sel)));
         btn.appendChild(wrap);
         btn.onclick = () => {
@@ -599,6 +856,11 @@
 
     function renderResult() {
       if (!snap || !snap.song) return;
+      // בלי שיבוץ אין פסק דין. מסך החשיפה נשאר פתוח עד שהמארח ממשיך, וזה בדיוק
+      // הרגע שבו מצטרפים מאחרים סורקים את הריבוע.
+      // מסך ההמתנה נצבע כאן ולא רק בלובי: מי שסרק את הריבוע באמצע חשיפה קיבל
+      // עיגול צבע ריק ורשימת שחקנים ריקה, בלי שום סימן שההצטרפות הצליחה
+      if (snap.me && snap.me.hit === undefined) { renderWait(); show('s-lg-wait'); return; }
       show('s-lg-result');
       const hit = snap.me && snap.me.hit;
       $('lg-res-mark').textContent = hit ? '✓' : '✗';
@@ -617,6 +879,15 @@
         lf.appendChild(bdi(left));
         lf.appendChild(document.createTextNode(' שירים לניצחון'));
       }
+      // המשחק נגמר: בלי זה כל מי שהפסיד קיבל "עוד 3 שירים לניצחון" בדיוק
+      // בשנייה שבה המסך הגדול מכתיר מישהו אחר
+      if (snap.phase === 'done') {
+        const w = snap.roster.find(r => r.pid === snap.winner);
+        const mine = !!(snap.me && w && w.pid === snap.me.pid);
+        lf.textContent = '';
+        lf.appendChild(document.createTextNode(
+          mine ? 'הכתר שלך 👑' : w ? 'המשחק נגמר. הכתר של ' + w.name + '.' : 'המשחק נגמר.'));
+      }
       renderTimeline($('lg-res-tl'), (snap.me && snap.me.tl) || [], {});
       if (navigator.vibrate) navigator.vibrate(hit ? 80 : [40, 60, 40]);
     }
@@ -628,6 +899,11 @@
       show('s-lg-place');
       $('lg-place-who').textContent = seat.name;
       $('lg-place-who').style.display = '';
+      // שתי כניסות מגיעות לכאן בהקשה אחת, גם בטעות. בלי יציאה נשארים לכודים
+      // במסך של שחקן אחר, וההימלטות היחידה היא לשבץ בשמו.
+      const cb = $('lg-place-cancel'); if (cb) cb.style.display = '';
+      // יציאה מסיימת את כל המשחק, ואין לה מקום במסך שהמארח פותח לכל שחקן בתורו
+      const qb = $('lg-place-quit'); if (qb) qb.style.display = 'none';
       const paintLocal = () => {
         $('lg-place-hint').textContent = sel === null ? 'הקישו על הרווח הנכון'
           : 'עכשיו הקישו על הכפתור הוורוד למטה';
@@ -638,18 +914,31 @@
         if (sel === null) btn.appendChild(document.createTextNode('קודם בוחרים מקום'));
         else {
           const wrap = el('span');
-          if (seat.tl.length) wrap.appendChild(document.createTextNode('לשים '));
+          wrap.appendChild(document.createTextNode(seat.tl.length ? 'לשים ' : 'מאשרים: '));
           wrap.appendChild(labelToNode(gapLabel(seat.tl, sel)));
           btn.appendChild(wrap);
         }
         btn.onclick = () => { const d = localMode.done; localMode = null;
                               $('lg-place-who').style.display = 'none';
+                              if (cb) cb.style.display = 'none';
                               show('s-lg-stage'); d(sel); };
       };
       paintLocal();
     }
 
-    return { joinScreen, go, openLocalPlacement, kill, snap: () => snap };
+    // יציאה בלי לשבץ בשם מישהו אחר
+    function cancelLocal() {
+      localMode = null;
+      sel = null;
+      locked = false;
+      $('lg-place-who').style.display = 'none';
+      const cb = $('lg-place-cancel'); if (cb) cb.style.display = 'none';
+      const qb = $('lg-place-quit'); if (qb) qb.style.display = 'none';
+      show('s-lg-stage');
+      Host.show();
+    }
+
+    return { joinScreen, go, openLocalPlacement, cancelLocal, kill, snap: () => snap };
   })();
 
   // ============================================================
@@ -657,6 +946,7 @@
   // ============================================================
   function setup() {
     show('s-lg-setup');
+    renderResumeOffer();
     const box = $('lg-target');
     box.innerHTML = '';
     for (const n of [6, 8, 10, 12]) {
@@ -673,6 +963,37 @@
     }
   }
 
+  // מסיבה שנקטעה: הצעה אחת בראש מסך ההקמה, ורק כל עוד היא טרייה
+  function renderResumeOffer() {
+    let b = $('lg-resume');
+    const d = Host.savedRoom();
+    if (!d) { if (b) b.style.display = 'none'; return; }
+    if (!b) {
+      b = el('button', 'big alt2', 'המשך את המסיבה');
+      b.id = 'lg-resume';
+      // השחזור לוקח עד עשרים שניות עד שמסך כלשהו מתחלף, וזה בדיוק הרגע שבו
+      // מקישים שוב. הקשה שנייה פותחת עמית נוסף על חדר חי.
+      b.onclick = async () => {
+        if (b.disabled) return;
+        b.disabled = true;
+        const old = b.textContent;
+        b.textContent = 'מחזירים את המסיבה...';
+        try { await Host.resume(); }
+        finally { b.disabled = false; b.textContent = old; }
+      };
+      const body = $('s-lg-setup').querySelector('.body');
+      body.insertBefore(b, body.firstChild);
+    }
+    b.style.display = '';
+  }
+
+  // הצעה בפתיחת האפליקציה, לפני שחזור קלף. הוחזר true אם יש מה להמשיך.
+  function resumeOffer() {
+    if (!Host.savedRoom()) return false;
+    setup();
+    return true;
+  }
+
   // קוד חדר בכתובת: נבדק בטעינה לפני שחזור סיבוב קלפים ישן
   function checkHash() {
     const m = (location.hash || '').match(/[#&]j=(\d{4})/);
@@ -686,7 +1007,8 @@
   function joinByCode(c) { Player.joinScreen(String(c)); }
 
   window.Party.ui = {
-    setup, checkHash, joinByCode,
+    setup, checkHash, joinByCode, resumeOffer,
+    cancelPlace: () => Player.cancelLocal(),
     open: () => Host.open(false),
     solo: () => Host.soloReady(),
     start: () => Host.start(),
@@ -704,7 +1026,13 @@
     // הבמה הציעה לנסות שוב בלי לתת שום דרך לעשות זאת
     retryRound: () => {
       const S = Host.state();
-      if (S && S.phase === 'listen') { S.round--; Host.nextRound(); }
+      if (!S || S.phase !== 'listen') return;
+      // בלי בדיקת העומס הספירה הייתה יורדת בזמן שהסיבוב הנוכחי עוד נטען,
+      // והקריאה עצמה נבלעת בנעילה. שתיקה כאן היא בדיוק מה שנראה כמו תקיעה.
+      if (Host.busy()) { $('lg-count').textContent = 'עוד רגע, מחפש שיר'; return; }
+      // מספר הסיבוב מתקדם גם כאן. מספר חוזר מבטל את ההשוואה היחידה שיש ל-paint,
+      // וטלפון שגמגם על פני הניסיון החוזר נשאר נעול על שיבוץ שהמארח כבר שכח.
+      Host.nextRound();
     },
     joinPrompt: () => {
       const v = ($('lg-code-in').value || '').trim();
@@ -726,6 +1054,10 @@
     // יציאה שבאמת עוצרת: הודעת פרידה לטלפונים, סגירת החיבור, ביטול לולאת
     // טעינת השיר שאולי רצה ברקע, וניקוי כיסוי הניתוק בטלפון
     quit: () => {
+      // "סיום" יושב באותה שורת כפתורים עם "טבלה", ואין ממנו דרך חזרה: כל צירי
+      // הזמן, הניקוד והסיבוב נמחקים לתמיד
+      const S = Host.state();
+      if (S && S.round > 0 && !confirm('לסיים את המשחק? ציר הזמן של כולם יימחק.')) return;
       try { if (Host.state()) Net.hostBroadcast({ v: 1, t: 'BYE' }); } catch (e) {}
       try { Net.close(); } catch (e) {}
       Host.kill();
