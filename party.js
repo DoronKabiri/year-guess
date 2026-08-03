@@ -52,6 +52,7 @@
 
     function fresh(code, solo) {
       clearTimeout(winTimer); winTimer = null;
+      busy = false;
       S = { code, seats: [], round: 0, phase: 'lobby', song: null,
             target: target(), solo: !!solo, winner: null, log: [] };
       seq = 0;
@@ -60,6 +61,7 @@
     }
     function kill() {
       clearTimeout(winTimer); winTimer = null;
+      busy = false;
       alive++; S = null;
       // משחק שהסתיים בכוונה אינו ממתין לשחזור בפתיחה הבאה
       try { localStorage.removeItem(LS_ROOM); } catch (e) {}
@@ -185,18 +187,22 @@
       }
       const tag = $('lg-stage-tag');
       if (tag) tag.textContent = noRoom
-        ? 'החדר לא נפתח מחדש. הטלפונים לא יתחברו. סיימו ופתחו חדר חדש.'
+        ? 'החדר לא נפתח מחדש. אפשר להמשיך מכאן: מקישים על שם של שחקן ומשבצים עבורו.'
         : S.solo
           ? 'מעבירים את הטלפון. כל אחד ואחת בתורם מקישים על השם שלהם ומשבצים.'
           : 'האזינו. כל אחד משבץ בטלפון שלו, בסתר.';
-      const ready = online().filter(s => s.place !== null && s.place !== undefined).length;
+      const placedOf = s => s.place !== null && s.place !== undefined;
+      const missing = seats().filter(s => !placedOf(s));
+      const ready = online().filter(placedOf).length;
       const tot = online().length;
       const c = $('lg-count');
       // בלי אף מחובר "0 מתוך 0 בחרו" נקרא כתקלת ספירה במקום כמצב חיבור.
       // מגיעים לכאן מיד אחרי שחזור, שבו כל המושבים מסומנים מנותקים.
+      // מושב שנפל מהחיבור ולא שיבץ יצא משני הצדדים של השבר והבמה הכריזה "כולם בחרו".
       c.textContent = !tot ? 'אף טלפון לא מחובר כרגע'
-        : (ready >= tot ? 'כולם בחרו' : `${ready} מתוך ${tot} בחרו`);
-      c.classList.toggle('full', tot > 0 && ready >= tot);
+        : missing.length ? (ready >= tot ? 'מחכים ל' + missing[0].name : `${ready} מתוך ${tot} בחרו`)
+        : 'כולם בחרו';
+      c.classList.toggle('full', tot > 0 && !missing.length);
       // שורת המצב שורדת ציור מחדש: render נקרא על כל הודעת רשת, ובלי זה
       // ההסבר על מה שקורה בנגינה נמחק ברגע שטלפון כלשהו משבץ
       const nt = $('lg-note'); if (nt) nt.textContent = S.note || '';
@@ -316,29 +322,37 @@
     async function open(solo) {
       const code = String(Math.floor(1000 + Math.random() * 9000));
       fresh(code, solo);
+      // דור הפתיחה: שתי כניסות חופפות הורגות זו את העמית של זו, והראשונה
+      // מתעוררת רק כעבור חמש עשרה שניות וזורקת את המארח ממשחק שכבר רץ.
+      const gen = alive;
       show('s-lg-lobby');
       $('lg-code').textContent = '...';
       $('lg-qr-wrap').style.display = 'none';
+      { const t = $('lg-lobby-tag'); if (t) t.textContent = 'כוונו את המצלמה של הטלפון לריבוע'; }
       $('lg-net').textContent = 'מקימים חדר...';
       $('lg-net').className = 'lg-pill wait';
       B().primePlayback();          // בתוך מחוות הלחיצה: משחרר צליל לכל הערב
       B().keepAwake();
       if (!await B().loadData()) return;
+      if (gen !== alive) return;
       if (solo) { soloReady(); return; }
       try {
         await Net.hostOpen(code, {
           onMessage: (key, msg, conn) => onPlayer(key, msg, conn),
           onDrop: key => { const s = seats().find(x => x.key === key); if (s) { s.online = false; s.key = null; push(); } },
         });
+        if (gen !== alive) return;
         drawQR(code);
         $('lg-net').textContent = 'החדר פתוח';
         $('lg-net').className = 'lg-pill ok';
       } catch (e) {
+        if (gen !== alive) return;
         // כשל בהקמת החדר אינו סוף הערב: אותו משחק בדיוק רץ ממכשיר אחד
         $('lg-net').textContent = 'אין חיבור לשרת ההצטרפות';
         $('lg-net').className = 'lg-pill bad';
         show('s-lg-solo');
       }
+      if (gen !== alive) return;
       renderLobby();
     }
 
@@ -413,6 +427,11 @@
       $('lg-net').textContent = 'מצב מכשיר אחד';
       $('lg-net').className = 'lg-pill ok';
       $('lg-qr-wrap').style.display = 'none';
+      // drawQR כתב קוד וקישור הצטרפות שאינם מובילים לשום מקום כשאין חדר.
+      // מי שינסה לסרוק או להקליד יקבל "לא נמצא חדר" ויחשוב שהאפליקציה תקועה.
+      $('lg-url').textContent = '';
+      $('lg-code').textContent = '';
+      { const t = $('lg-lobby-tag'); if (t) t.textContent = 'מעבירים את הטלפון מיד ליד. כולם משחקים מהמכשיר הזה.'; }
       show('s-lg-lobby');
       if (!seats().length) { addSeat('שחקן 1'); addSeat('שחקן 2'); }
       renderLobby();
@@ -481,10 +500,10 @@
       if (S.phase === 'done') return;
       if (busy) return;
       clearTimeout(winTimer); winTimer = null;
+      const gen = alive;
       busy = true;
       lockButtons(true);
       try {
-      const gen = alive;
       S.round++;
       S.phase = 'listen';
       S.heard = false;
@@ -500,7 +519,10 @@
       const lead = [...seats()].sort((a, b) => b.tl.length - a.tl.length)[0];
       const usedYears = lead ? lead.tl.map(x => x.y) : [];
       let song = null;
-      for (let i = 0; i < 3 && !song; i++) {
+      // תקרת זמן לכל הלולאה: שלושה נסיונות של פסקי זמן מצטברים מחזיקים את
+      // הבמה נעולה מעל דקה, וגם "שיר אחר" חסום כל אותו זמן.
+      const t0 = Date.now();
+      for (let i = 0; i < 3 && !song && Date.now() - t0 < 45000; i++) {
         const c = draw(usedYears);
         if (!c) break;
         const ok = await B().playSong(c, (st, msg) => {
@@ -524,8 +546,10 @@
           S.note = txt;
           // שורת הספירה נלקחת רק כל עוד אין שיר. משהוכרז הסיבוב היא שייכת למונה
           // המשבצים, וההודעות ממשיכות לשורת המצב הנפרדת.
-          if (!S.song) $('lg-count').textContent = txt;
-          const n = $('lg-note'); if (n) n.textContent = txt;
+          // אותה הודעה בשתי שורות סמוכות נקראת כתקלת ציור, ולכן כותבים לאחת בלבד
+          const n = $('lg-note');
+          if (!S.song) { $('lg-count').textContent = txt; if (n) n.textContent = ''; }
+          else if (n) n.textContent = txt;
         });
         if (gen !== alive) return;
         if (ok) song = c;
@@ -555,9 +579,11 @@
       Net.hostBroadcast({ v: 1, t: 'ROUND', round: S.round });
       push();
       } finally {
+        if (gen === alive) {
         busy = false;
         const n = $('lg-next-btn'); if (n && !(S && S.phase === 'done')) n.disabled = false;
         if (S) $('lg-reveal-btn').disabled = !S.heard || !S.song;
+        }
       }
     }
 
@@ -755,14 +781,18 @@
       if (msg.t === 'WELCOME') {
         me = { pid: msg.pid, secret: msg.secret, colour: msg.colour };
         remember();
+        // הטלפון של השחקן אינו מבקש נעילת מסך בשום מקום אחר, והוא ננעל
+        // מעצמו באמצע ההאזנה ונופל מהחיבור
+        B().keepAwake();
         return;
       }
       if (msg.t === 'BYE') {
         // המושב עבר למכשיר אחר. מפסיקים להתחבר מחדש, אחרת שני מכשירים
         // ייאבקו על אותו מושב ללא סוף.
-        code = null; snap = null;
+        // ניקוי מלא: שאריות של סיבוב קודם גורמות למסך להבטיח שיבוץ שהמארח
+        // החדש מעולם לא קיבל.
         try { Net.close(); } catch (e) {}
-        $('lg-drop').style.display = 'none';
+        kill();
         window.App.show('s-home');
         return;
       }
@@ -774,6 +804,9 @@
 
     function paint() {
       if (!snap) return;
+      // טלפון של שחקן ננעל מעצמו באמצע ההאזנה, iOS מקפיא את הדף והחיבור נופל.
+      // כל תמונת מצב נכנסת מבקשת מחדש את הנעילה שהדפדפן שחרר בזמן הרקע.
+      B().keepAwake();
       // התמונה היא האמת. סיבוב חדש מאפס את הבחירה המקומית גם כשהודעת ROUND
       // לא הגיעה, אחרת המסך מבטיח שיבוץ שאינו קיים אצל המארח.
       if (snap.round !== lastRound) { lastRound = snap.round; sel = null; locked = false; }
@@ -860,7 +893,7 @@
       // הרגע שבו מצטרפים מאחרים סורקים את הריבוע.
       // מסך ההמתנה נצבע כאן ולא רק בלובי: מי שסרק את הריבוע באמצע חשיפה קיבל
       // עיגול צבע ריק ורשימת שחקנים ריקה, בלי שום סימן שההצטרפות הצליחה
-      if (snap.me && snap.me.hit === undefined) { renderWait(); show('s-lg-wait'); return; }
+      if (snap.me && snap.me.hit == null) { renderWait(); show('s-lg-wait'); return; }
       show('s-lg-result');
       const hit = snap.me && snap.me.hit;
       $('lg-res-mark').textContent = hit ? '✓' : '✗';
@@ -1056,8 +1089,12 @@
     quit: () => {
       // "סיום" יושב באותה שורת כפתורים עם "טבלה", ואין ממנו דרך חזרה: כל צירי
       // הזמן, הניקוד והסיבוב נמחקים לתמיד
+      // Host.state() ריק בכל טלפון שאינו המארח, ולכן שם לא נשאלה שום שאלה
+      // וההקשה היחידה שעל המסך הוציאה שחקן מהמשחק באמצע סיבוב
       const S = Host.state();
-      if (S && S.round > 0 && !confirm('לסיים את המשחק? ציר הזמן של כולם יימחק.')) return;
+      const ps = Player.snap();
+      if (S && S.round > 0) { if (!confirm('לסיים את המשחק? ציר הזמן של כולם יימחק.')) return; }
+      else if (ps && ps.round > 0) { if (!confirm('לצאת מהמשחק? כדי לחזור צריך להקליד את קוד החדר.')) return; }
       try { if (Host.state()) Net.hostBroadcast({ v: 1, t: 'BYE' }); } catch (e) {}
       try { Net.close(); } catch (e) {}
       Host.kill();

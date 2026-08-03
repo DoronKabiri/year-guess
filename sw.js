@@ -1,13 +1,15 @@
 // היטסטר רמיקס: מטמון מעטפת האפליקציה כדי שתעבוד גם בחיבור חלש
-const CACHE = 'remix-202608030617';
+const CACHE = 'remix-202608031147';
+// חותמת הסקריפטים נגזרת מ-CACHE, אחרת ארבע החותמות יכולות להיפרד בעריכה ידנית
+const STAMP = CACHE.split('-')[1];
 // כתובות הסקריפטים נושאות חותמת. הדף מוגש קודם מהרשת אבל הסקריפטים מהמטמון,
 // ולכן בלי החותמת הפתיחה הראשונה אחרי כל פריסה מריצה סימון חדש מול קוד ישן.
 const SHELL = [
   './',
   './index.html',
-  './qr.js?v=202608030430',
-  './party_core.js?v=202608030430',
-  './party.js?v=202608030430',
+  './qr.js?v=' + STAMP,
+  './party_core.js?v=' + STAMP,
+  './party.js?v=' + STAMP,
   './manifest.webmanifest',
   './data/cards.json',
   './data/pool.json',
@@ -81,6 +83,6 @@ self.addEventListener('fetch', e => {
         caches.open(CACHE).then(c => c.put(e.request, copy));
       }
       return res;
-    }).catch(() => caches.match(e.request)))
+    }).catch(() => caches.match(e.request, { ignoreSearch: true })))
   );
 });

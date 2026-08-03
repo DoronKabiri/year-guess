@@ -325,7 +325,7 @@
   <div class="tag">אותם קלפים, אותן שנים, שירים חדשים</div>
   <button class="big" onclick="App.startScan()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-cam"/></svg>סרוק קלף</button>
   <button class="big alt" onclick="App.show('s-manual')"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-keypad"/></svg>הקלדת מספר קלף</button>
-  <button class="big alt2" onclick="Party.ui.setup()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-users"/></svg>משחק בלי קלפים</button>
+  <button class="big alt2" onclick="App.openParty()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-users"/></svg>משחק בלי קלפים</button>
   <div class="footer-row">
     <button class="small" onclick="App.show('s-players')"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-users"/></svg>שחקנים</button>
     <button class="small" id="summary-btn" style="display:none" onclick="App.show('s-summary')"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chart"/></svg>סיכום הערב</button>
@@ -355,6 +355,7 @@
     <div class="note">המכשיר הזה מנגן את המוזיקה. חברו אותו לחשמל והשאירו אותו פתוח על השולחן.</div>
     <!-- מי שהמצלמה שלו לא קוראת את הריבוע מקליד את הקוד הגדול שמופיע אצל המארח -->
     <input id="lg-code-in" inputmode="numeric" maxlength="4" aria-label="קוד חדר"
+           enterkeyhint="go" onkeydown="if(event.key==='Enter'){event.preventDefault();Party.ui.joinPrompt()}"
            placeholder="קוד בן 4 ספרות" style="display:none">
   </div>
   <div class="shelf-bar">
@@ -370,7 +371,7 @@
     <div id="lg-qr-wrap"><canvas id="lg-qr"></canvas></div>
     <div id="lg-code">----</div>
     <div id="lg-url"></div>
-    <div class="tag">כוונו את המצלמה של הטלפון לריבוע</div>
+    <div class="tag" id="lg-lobby-tag">כוונו את המצלמה של הטלפון לריבוע</div>
     <div id="lg-seats"></div>
     <div class="lg-warn">הטלפון הזה מנגן. אל תנעלו אותו ואל תצאו מהאפליקציה.</div>
   </div>
@@ -415,6 +416,8 @@
   <div class="shelf-bar">
     <button class="big" id="lg-next-btn" onclick="Party.ui.next()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-note"/></svg>השיר הבא</button>
     <div class="footer-row">
+      <!-- במצב רצועה מלאה השיר ממשיך לנגן לאורך כל ההקראה, ואין כאן שום דרך לעצור -->
+      <button class="small" onclick="App.togglePlay()">נגן / עצור</button>
       <button class="small" onclick="Party.ui.board()">טבלה</button>
       <button class="small" onclick="Party.ui.quit()">סיום</button>
     </div>
@@ -670,8 +673,8 @@
   <button class="big" onclick="App.show('s-home')">חזרה</button>
 </div>
 
-<script src="qr.js?v=202608030617"></script>
-<script src="party_core.js?v=202608030617"></script>
+<script src="qr.js?v=202608031147"></script>
+<script src="party_core.js?v=202608031147"></script>
 <script>
 const App = (() => {
   // ---------- מצב כללי ----------
@@ -704,7 +707,9 @@ const App = (() => {
   let fullFails = 0, fullOff = false, fullOffAt = 0, lastPlayError = null;
   // הכיבוי מוגבל בזמן: שני מקרי פסק זמן על ויפיי רועד הורידו ערב שלם של פרימיום
   // לקטעים של 30 שניות, ושתי נקודות האיפוס יושבות במסך שהמסיבה אינה מציגה.
-  const fullDown = () => fullOff && Date.now() - fullOffAt < 10 * 60000;
+  // בלי איפוס המונה כאן הכיבוי חוזר אחרי כישלון בודד אחד, כי fullFails נשאר על 2
+  // לכל הערב, ושתי נקודות האיפוס האחרות אינן נגישות משום מסך מסיבה.
+  const fullDown = () => { if (fullOff && Date.now() - fullOffAt >= 10 * 60000) { fullOff = false; fullFails = 0; } return fullOff; };
   function noteFullFail() {
     if (++fullFails >= 2) {
       fullOff = true;
@@ -740,6 +745,13 @@ const App = (() => {
     $('err-msg').textContent = onReveal ? msg : stripYears(msg);
     show('s-error');
   };
+  // כפתור המסיבה קרא ישירות אל קובץ נפרד. אם הוא לא נטען, הדף נראה תקין
+  // וההקשה פשוט לא עושה כלום, וזה נקרא כאפליקציה תקועה.
+  function openParty() {
+    if (window.Party && window.Party.ui) { Party.ui.setup(); return; }
+    $('err-msg').textContent = 'חלק מהאפליקציה לא נטען. רעננו את הדף.';
+    show('s-error');
+  }
 
   async function loadData() {
     if (CARDS && POOL) return true;
@@ -918,6 +930,8 @@ const App = (() => {
       catch (e) { lastApiOddity = { path, status: r.status, body: txt.slice(0, 120) }; return null; }
     }
     let lastApiOddity = null;
+    // שגיאת החיפוש נשמרת, אחרת טוקן שפג ורשת איטית מגיעים למסך כ"לא נמצא בספוטיפיי"
+    let lastSearchErr = null;
 
     // התאמת שיר: חיפוש עם עדיפות לשם השיר (שמות אמנים ישראליים חוזרים בתעתיק)
     const HEBRE = /[֐-׿]/;
@@ -925,6 +939,8 @@ const App = (() => {
     const overlap = (a, b) => { if (!a.size) return 0; let n = 0; a.forEach(x => b.has(x) && n++); return n / a.size; };
 
     async function findTrack(a, t, alt) {
+      // איפוס לפני הכל, אחרת פגיעה במטמון גוררת איתה שגיאה ישנה מסיבוב קודם
+      lastSearchErr = null;
       const key = 'sp_track::' + a + '::' + t;
       const cached = localStorage.getItem(key);
       // רשומה פגומה במטמון מרפאה את עצמה במקום להפיל את הסיבוב
@@ -937,11 +953,14 @@ const App = (() => {
       const qs = [`track:"${t}" artist:"${a}"`, `${a} ${t}`, alt ? `${alt} ${t}` : null, t].filter(Boolean);
       // בלי שוק החיפוש מחזיר גם רצועות שאינן ניתנות לנגינה בחשבון ישראלי,
       // והן נשמרות במטמון ונכשלות שוב באותו שיר בכל ערב
-      const reqs = qs.map(q => api('GET', '/search?' + new URLSearchParams({ q, type: 'track', limit: '10', market: 'from_token' })).catch(() => null));
+      const reqs = qs.map(q => api('GET', '/search?' + new URLSearchParams({ q, type: 'track', limit: '10', market: 'from_token' })).catch(e => { lastSearchErr = lastSearchErr || e; return null; }));
       for (const r of reqs) {
         const d = await r;
         if (!d) continue;
         for (const it of (d.tracks && d.tracks.items) || []) {
+          // רצועה שהשוק כבר סימן כלא ניתנת לנגינה נשמרת במטמון, שורפת ניסיון
+          // ומחזירה 403 שנספר ככישלון רצועה מלאה
+          if (it.is_playable === false) continue;
           const tOK = overlap(tok(t), tok(it.name)) >= 0.7;
           const artistNames = it.artists.map(x => x.name).join(' ');
           const aOK = overlap(tok(a), tok(artistNames)) >= 0.5 ||
@@ -1020,6 +1039,7 @@ const App = (() => {
 
     return { login, handleRedirect, connected, hasScope, findTrack, play, pause, resume, device, devices, pickDevice, api, token,
              oddity: () => lastApiOddity,
+             searchErr: () => lastSearchErr,
              clientId, setClientId: v => localStorage.setItem(LS_ID, v.trim()),
              disconnect: () => localStorage.removeItem(LS_TOK) };
   })();
@@ -1039,8 +1059,10 @@ const App = (() => {
           try {
             player = new Spotify.Player({
               name: 'המשחק (רמיקס)',
-              getOAuthToken: cb => sp.token().then(cb).catch(() => {
-                setPlayState('paused', 'החיבור לספוטיפיי פג. התחברו מחדש בהגדרות.');
+              // רק כשההרשאה באמת פגה. פסק זמן של רשת הדפיס כאן הנחיה להתחבר מחדש
+              // באמצע סיבוב חי, והתחברות מחדש טוענת את הדף ומסיימת את המסיבה.
+              getOAuthToken: cb => sp.token().then(cb).catch(e => {
+                if (e && e.reauth) setPlayState('paused', 'החיבור לספוטיפיי פג. התחברו מחדש בהגדרות.');
               }),
               volume: 1,
             });
@@ -1344,7 +1366,13 @@ const App = (() => {
       current.sp = found;
       if (!current.sp) {
         showWake(false);              // עוברים לקטע קצר, פאנל ההעֵרה כבר לא רלוונטי
-        setPlayState('loading', 'לא נמצא בספוטיפיי, נשתמש בקטע של 30 שניות');
+        // חיפוש שנכשל על טוקן או על רשת אינו "השיר לא קיים". ההודעה הגורפת גם
+        // דרסה את האבחנה המדויקת שהכנת המכשיר כתבה באותו רגע.
+        const se = sp.searchErr();
+        setPlayState('loading',
+          se && (se.reauth || se.status === 401) ? 'החיבור לספוטיפיי פג. התחברו מחדש בהגדרות. ממשיכים בקטע של 30 שניות.'
+          : se && se.timeout ? 'הרשת איטית, ממשיכים בקטע של 30 שניות.'
+          : 'לא נמצא בספוטיפיי, נשתמש בקטע של 30 שניות');
         await preparePreview();
         await finish();
         return;
@@ -1500,7 +1528,9 @@ const App = (() => {
         // בתחילת סיבוב: נגינה מתחילת הרצועה. אחרי עצירה באמצע: המשך מאותה נקודה.
         if (!current.spStarted) { await playFull(current.sp.uri, current); current.spStarted = true; }
         else {
-          try { await sp.resume(current.dev); }
+          // הסימון לפני הפקודה: פסק זמן זורק חריגה בזמן שספוטיפיי כבר ניגן,
+          // ובלי הדגל אין אחר כך שום דרך להשתיק את הרמקול
+          try { spCommanded = true; await sp.resume(current.dev); }
           catch (e) {
             // 404 = המכשיר מת בהפסקה. 403 = ההקשר נמחק אחרי הפסקה ארוכה.
             // בשני המקרים playFull מארגן מכשיר מחדש ומתחיל מההתחלה.
@@ -1590,7 +1620,9 @@ const App = (() => {
         await playFull(me.sp.uri, me);
         if (current !== me) {
           // כבר עברו לקלף אחר. משתיקים רק אם הסיבוב החדש עוד לא התחיל לנגן בעצמו.
-          if (!spPlaying) sp.pause().catch(() => {});
+          // עם מזהה המכשיר: עצירה בלי מזהה יכולה לנחות על מכשיר אחר, לחזור 200,
+          // ולהשאיר את הרמקול מנגן בזמן שהאפליקציה חושבת שהשתיקה הצליחה.
+          if (!spPlaying) sp.pause(me.dev).catch(() => {});
           return;
         }
         me.spStarted = true; spPlaying = true;
@@ -1736,6 +1768,16 @@ const App = (() => {
     $('dev-wake').style.display = list.length ? 'none' : '';
     if (!list.length) { box.textContent = 'לא נמצאו מכשירים. העירו את ספוטיפיי ולחצו רענן.'; return; }
     const chosen = localStorage.getItem('sp_device');
+    // בלי הכניסה הזאת אין שום דרך לבטל בחירה שנשמרה, ומכשיר שנבחר פעם אחת
+    // לפני חודשים ממשיך לנצח: הפקודה מצליחה והמשפחה לא שומעת דבר.
+    {
+      const b = document.createElement('button');
+      b.className = 'small' + (chosen ? '' : ' on');
+      b.style.width = '100%';
+      b.textContent = 'אוטומטי';
+      b.onclick = () => { localStorage.removeItem('sp_device'); fullFails = 0; fullOff = false; refreshDevices(); };
+      box.appendChild(b);
+    }
     for (const d of list) {
       const b = document.createElement('button');
       b.className = 'small' + ((chosen === d.id || (!chosen && d.is_active)) ? ' on' : '');
@@ -1995,7 +2037,7 @@ const App = (() => {
   // ---------- מסך דלוק כל עוד מסך הנגינה פתוח ----------
   // גם מסכי המסיבה. מכשיר המארח הוא הרמקול, הלוח ומרכזיית החיבורים לכל הערב,
   // ונעילה אוטומטית שלו מפילה את כל הטלפונים בבת אחת.
-  const awakeScreen = () => ['s-play', 's-lg-stage', 's-lg-lobby', 's-lg-place', 's-lg-solo', 's-lg-reveal', 's-lg-board', 's-lg-win']
+  const awakeScreen = () => ['s-play', 's-lg-stage', 's-lg-lobby', 's-lg-place', 's-lg-wait', 's-lg-watch', 's-lg-result', 's-lg-solo', 's-lg-reveal', 's-lg-board', 's-lg-win']
     .some(id => { const e = $(id); return e && e.classList.contains('active'); });
   async function keepAwake() {
     try {
@@ -2020,8 +2062,12 @@ const App = (() => {
     if (awakeScreen()) keepAwake();
     // חזרנו מהעֵרת ספוטיפיי: בודקים אוטומטית, בלי לחכות ללחיצה על "בדוק שוב".
     // רק כשמסך הנגינה פעיל, אחרת חשיפה עם פאנל שנשכח מפעילה בדיקות סרק.
-    if (current && current.sp && $('s-play').classList.contains('active') &&
-        $('wake-panel').style.display !== 'none') retryDevices();
+    // הקישור הירוק של הבמה הבטיח "פעם אחת", אבל התנאי דרש את מסך הנגינה של
+    // משחק הקלפים ואת הפאנל שלו, ושניהם לעולם אינם פעילים בסיבוב מסיבה.
+    const lw = $('lg-wake');
+    if (current && current.sp &&
+        ((lw && lw.style.display !== 'none') ||
+         ($('s-play').classList.contains('active') && $('wake-panel').style.display !== 'none'))) retryDevices();
   });
 
   // ---------- תקציב חזרות עם דעיכה רכה ----------
@@ -2212,6 +2258,9 @@ const App = (() => {
     // כמכשיר מסוג Computer, והוא גובר על הרמקול או על הטלפון האמיתי ומנגן לשקט.
     // הוא נטען רק כשבאמת אין מכשיר אחר, בתוך armDevice.
     const ok = await loadData();
+    // loadData היא נסיעה אמיתית לרשת, ומסך הבית פעיל ולחיץ לכל אורכה. בלי
+    // הבדיקה הזאת שני הזנבות שולחים show ומעיפים חדר שכבר נפתח או מסך שגיאה.
+    const atHome = () => $('s-home').classList.contains('active');
     updateHome(); renderSettings();
     // קוד הצטרפות בכתובת קודם לכל: אחרת סריקת QR של חבר מחיה קלף ישן
     if (window.Party && window.Party.ui && window.Party.ui.checkHash()) return;
@@ -2219,9 +2268,9 @@ const App = (() => {
     // מסיבה שנקטעה קודמת לקלף: מכשיר המארח נסגר באמצע ערב, וכל צירי הזמן
     // והניקוד ממתינים לשחזור. בלי זה המסך חוזר לקלף שנסרק לפני שעה.
     if (window.Party && window.Party.ui && window.Party.ui.resumeOffer &&
-        window.Party.ui.resumeOffer()) return;
+        atHome() && window.Party.ui.resumeOffer()) return;
     // סיבוב שנקטע ברענון או בנעילה ארוכה חוזר בדיוק כפי שהיה
-    if (ok) restoreRound();
+    if (ok && atHome()) restoreRound();
   });
   // מסך הבית פעיל כבר בטעינה, ולכן האנימציה מופעלת כאן ולא רק במעבר מסך
   if ($('s-home').classList.contains('active')) fx.start();
@@ -2275,11 +2324,11 @@ const App = (() => {
   return { show, startScan, stopScan, manualGo, togglePlay, reveal, anotherSong,
            stopAudio, nextCard, resetNight, setMode, spConnect, spDisconnect, diagnose,
            refreshDevices, retryDevices, addPlayer, judge, setNostalgia, setGameMode, pad, setTableDeck,
-           bridge };
+           openParty, bridge };
 })();
 // const ברמה העליונה אינו מאפיין של window, ומצב המסיבה יושב בקובץ נפרד
 window.App = App;
 </script>
-<script src="party.js?v=202608030617"></script>
+<script src="party.js?v=202608031147"></script>
 </body>
 </html>
