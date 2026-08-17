@@ -190,7 +190,9 @@
         ? 'החדר לא נפתח מחדש. אפשר להמשיך מכאן: מקישים על שם של שחקן ומשבצים עבורו.'
         : S.solo
           ? 'מעבירים את הטלפון. כל אחד ואחת בתורם מקישים על השם שלהם ומשבצים.'
-          : 'האזינו. כל אחד משבץ בטלפון שלו, בסתר.';
+          : seats().some(s => !s.key)
+            ? 'האזינו. מי שעם טלפון משבץ בטלפון, ומי שבלי מקיש על השם שלו כאן.'
+            : 'האזינו. כל אחד משבץ בטלפון שלו, בסתר.';
       const placedOf = s => s.place !== null && s.place !== undefined;
       const missing = seats().filter(s => !placedOf(s));
       const ready = online().filter(placedOf).length;
@@ -236,6 +238,8 @@
       }
       renderNostalgia();
       $('lg-rv-note').textContent = commentary();
+      const fb = $('lg-rv-flag');
+      if (fb) { fb.textContent = 'השנה לא מדויקת? סמנו'; fb.disabled = false; }
     }
 
     // הרצועה הרגשית: מי היה בן כמה. בלי פועל ובלי שם עצם ממוגדר, ולכן
@@ -656,6 +660,15 @@
     // ניתוק מדווח פעמיים, מ-close ומ-error, וגם ההתחברות מחדש עצמה סוגרת את החיבור
     // הישן ומדווחת שוב. בלי נעילה ומונה זה מאכיל את עצמו ומנסה בלי סוף.
     let dropTimer = null, reconnecting = false, tries = 0;
+    // דור חיבור: כל ניסיון התחברות פוסל את קודמיו. בלי זה לולאת ההתחברות מחדש
+    // וניסיון הצטרפות ידני הורסים זה לזה את החיבור כל 2.5 שניות, וכל הקשה על
+    // "אני בפנים" נכשלת בזמן שהשכבה הכתומה רוטטת מעל המסך. זה בדיוק מה שקרה לדורון.
+    let netGen = 0;
+    function mkHandlers() {
+      const g = ++netGen;
+      return { onMessage: m => { if (g === netGen) onHost(m); },
+               onDrop: () => { if (g === netGen) dropped(); } };
+    }
 
     const store = () => {
       try { return JSON.parse(localStorage.getItem(LS_ME) || '{}'); } catch (e) { return {}; }
@@ -707,13 +720,17 @@
         // חיבור יכול לקחת חמש עשרה שניות, והודעת התקדמות בצבע שגיאה הזמינה
         // בדיוק את ההקשה השנייה שמייצרת את מושב הרפאים
         errBox.className = 'tag'; errBox.textContent = 'מתחברים...';
+        // ניסיון ידני חדש מבטל כל לולאת התחברות ישנה, אחרת הם הורגים זה את זה
+        clearTimeout(dropTimer);
+        $('lg-drop').style.display = 'none';
         const prev = store()[code];
         try {
-          await Net.joinRoom(code, { onMessage: onHost, onDrop: dropped });
+          await Net.joinRoom(code, mkHandlers());
         } catch (e) {
           errBox.className = 'err';
           errBox.textContent = e && e.missing
-            ? 'לא נמצא חדר עם הקוד הזה' : 'החיבור נכשל. בדקו שאתם על אותה רשת.';
+            ? 'לא נמצא חדר עם הקוד הזה. בדקו את הספרות במסך של המארח.'
+            : 'החיבור נכשל. נסו שוב, ואם זה חוזר רעננו את הדף בשני המכשירים.';
           return;
         }
         Net.playerSend({ v: 1, t: 'HELLO', code, name, born,
@@ -726,7 +743,9 @@
     }
 
     function dropped() {
-      if (!code || reconnecting) return;
+      // לפני שהתקבלנו לחדר אין למה להתחבר מחדש: כשל בהצטרפות מוצג בטופס עצמו,
+      // והשכבה הכתומה שמורה לנפילה של חיבור שכבר עבד
+      if (!code || !me || reconnecting) return;
       $('lg-drop').style.display = 'flex';
       clearTimeout(dropTimer);
       dropTimer = setTimeout(() => { if (code) reconnect(); }, 2000);
@@ -737,7 +756,7 @@
       tries++;
       const prev = store()[code];
       try {
-        await Net.joinRoom(code, { onMessage: onHost, onDrop: dropped });
+        await Net.joinRoom(code, mkHandlers());
         Net.playerSend({ v: 1, t: 'HELLO', code, name: prev ? prev.name : 'שחקן',
                          pid: prev ? prev.pid : null, secret: prev ? prev.secret : null });
         tries = 0;
@@ -1075,6 +1094,14 @@
     join: () => Player.go(),
     newCode: () => Host.open(false),
     addSoloSeat: () => { const n = prompt('שם השחקן'); if (n) { Host.addSeat(n); Host.show(); } },
+    // רישום שנה חשודה מחשיפת המסיבה, לאותו צינור של משחק הקלפים
+    flagYear: () => {
+      const S = Host.state();
+      if (!S || !S.song) return;
+      B().flagSong({ src: 'party', a: S.song.a, t: S.song.t, year: S.song.year });
+      const fb = $('lg-rv-flag');
+      if (fb) { fb.textContent = 'נרשם ✓ תודה'; fb.disabled = true; }
+    },
     share: () => {
       const S = Host.state();
       if (!S) return;

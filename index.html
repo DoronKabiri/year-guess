@@ -379,7 +379,7 @@
     <button class="big" id="lg-start" onclick="Party.ui.start()" disabled>צריך עוד שחקן אחד</button>
     <div class="footer-row">
       <button class="small" onclick="Party.ui.share()">שלחו קישור</button>
-      <button class="small" onclick="Party.ui.addSoloSeat()">הוסיפו שחקן</button>
+      <button class="small" onclick="Party.ui.addSoloSeat()">גם אני משחק מכאן</button>
       <button class="small" onclick="Party.ui.quit()">יציאה</button>
     </div>
   </div>
@@ -412,6 +412,7 @@
     <div id="lg-rv-seats"></div>
     <div id="lg-nost"></div>
     <div class="tag" id="lg-rv-note"></div>
+    <button class="small" id="lg-rv-flag" onclick="Party.ui.flagYear()">השנה לא מדויקת? סמנו</button>
   </div>
   <div class="shelf-bar">
     <button class="big" id="lg-next-btn" onclick="Party.ui.next()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-note"/></svg>השיר הבא</button>
@@ -571,6 +572,15 @@
     <div class="note" id="mode-note"></div>
   </div>
   <div class="set-block">
+    <div class="h">שנים שסומנו כלא מדויקות</div>
+    <div class="note" id="flag-count">אין סימונים.</div>
+    <div class="radio-row">
+      <button id="flag-copy" onclick="App.copyFlags()">העתק רשימה</button>
+      <button onclick="App.clearFlags()">נקה</button>
+    </div>
+    <div class="note">מסמנים במסך החשיפה, ואת הרשימה שולחים לתיקון המאגר.</div>
+  </div>
+  <div class="set-block">
     <div class="h">איפה לנגן (רצועות מלאות)</div>
     <div class="note">הכי אמין: רמקול, טלוויזיה או מחשב שמחוברים לספוטיפיי. הטלפון עצמו עובד, אבל נרדם כשעוברים למצלמה.</div>
     <div id="dev-list" style="display:flex;flex-direction:column;gap:8px"></div>
@@ -655,6 +665,7 @@
     <div class="artist-reveal rv-step" id="rv-artist"></div>
     <div class="note rv-step" id="rv-orig"></div>
     <a class="splink" id="rv-splink" target="_blank" rel="noopener" style="display:none"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-head"/></svg>פתח בספוטיפיי</a>
+    <button class="small rv-step" id="rv-flag" onclick="App.flagYear()">השנה לא מדויקת? סמנו</button>
     <div class="footer-row" id="judge-row" style="display:none">
       <button class="big green" style="width:44%;padding:14px" id="judge-hit" onclick="App.judge(true)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-check"/></svg>צדק</button>
       <button class="big" style="width:44%;padding:14px;background:rgba(255,255,255,.15);box-shadow:none" id="judge-miss" onclick="App.judge(false)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x"/></svg>פספס</button>
@@ -673,8 +684,8 @@
   <button class="big" onclick="App.show('s-home')">חזרה</button>
 </div>
 
-<script src="qr.js?v=202608031147"></script>
-<script src="party_core.js?v=202608031147"></script>
+<script src="qr.js?v=202608172319"></script>
+<script src="party_core.js?v=202608172319"></script>
 <script>
 const App = (() => {
   // ---------- מצב כללי ----------
@@ -734,7 +745,7 @@ const App = (() => {
     $(id).classList.add('active');
     if (id !== 's-play') setPreparing(false);
     if (id === 's-home') { updateHome(); fx.start(); } else fx.stop();
-    if (id === 's-settings') renderSettings();
+    if (id === 's-settings') { renderSettings(); renderFlagCount(); }
     if (id === 's-players') renderPlayers();
     if (id === 's-summary') renderSummary();
   };
@@ -2108,7 +2119,40 @@ const App = (() => {
     preparePlayback();
   }
 
+  // ---------- דיווח שנה לא מדויקת ----------
+  // דורון מזהה ליד השולחן אי-התאמות כמו 1997 במקום 1998. הכפתור רושם את המקרה
+  // המדויק במקום שנצטרך לשחזר אותו מהזיכרון, והרשימה נשלחת לתיקון המאגר.
+  const FLAGS_KEY = 'year_flags_v1';
+  const flags = () => { try { return JSON.parse(localStorage.getItem(FLAGS_KEY) || '[]'); } catch (e) { return []; } };
+  function saveFlag(entry) {
+    const all = flags();
+    all.push(entry);
+    localStorage.setItem(FLAGS_KEY, JSON.stringify(all));
+  }
+  function flagYear() {
+    if (!current || !current.song) return;
+    saveFlag({ src: 'card', a: current.song.a, t: current.song.t, year: current.year,
+               sku: current.sku || null, num: current.num || null,
+               card: current.card ? { a: current.card.a, t: current.card.t } : null });
+    const b = $('rv-flag');
+    if (b) { b.textContent = 'נרשם ✓ תודה'; b.disabled = true; }
+  }
+  function copyFlags() {
+    const data = JSON.stringify(flags(), null, 1);
+    navigator.clipboard.writeText(data)
+      .then(() => { $('flag-count').textContent = 'הועתק! שלחו את הרשימה לתיקון.'; })
+      .catch(() => { $('flag-count').textContent = data; });
+  }
+  function clearFlags() { localStorage.removeItem(FLAGS_KEY); renderFlagCount(); }
+  function renderFlagCount() {
+    const n = flags().length;
+    const box = $('flag-count');
+    if (box) box.textContent = n ? `${n} סימונים ממתינים לשליחה.` : 'אין סימונים.';
+  }
+
   function reveal() {
+    const fb = $('rv-flag');
+    if (fb) { fb.textContent = 'השנה לא מדויקת? סמנו'; fb.disabled = false; }
     showWake(false);      // פאנל העֵרה שנשאר פתוח היה מפעיל בדיקות מכשיר גם במסך החשיפה
     const rv = $('s-reveal');
     rv.classList.remove('play'); void rv.offsetWidth;   // איתחול האנימציה בכל סיבוב
@@ -2314,6 +2358,7 @@ const App = (() => {
       return !!(current && current.song === song && !current.dead && partyHeard);
     },
     stopSong: () => { stopAudio(true); current = null; partyState = null; },
+    flagSong: entry => saveFlag(entry),
     toggle: () => togglePlay(),
     isPlaying: () => current && current.sp ? spPlaying : !audio.paused,
     refreshPreview: () => refreshPreview(),
@@ -2324,11 +2369,11 @@ const App = (() => {
   return { show, startScan, stopScan, manualGo, togglePlay, reveal, anotherSong,
            stopAudio, nextCard, resetNight, setMode, spConnect, spDisconnect, diagnose,
            refreshDevices, retryDevices, addPlayer, judge, setNostalgia, setGameMode, pad, setTableDeck,
-           openParty, bridge };
+           openParty, flagYear, copyFlags, clearFlags, bridge };
 })();
 // const ברמה העליונה אינו מאפיין של window, ומצב המסיבה יושב בקובץ נפרד
 window.App = App;
 </script>
-<script src="party.js?v=202608031147"></script>
+<script src="party.js?v=202608172319"></script>
 </body>
 </html>
